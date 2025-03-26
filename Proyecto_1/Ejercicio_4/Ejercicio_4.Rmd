@@ -1,8 +1,42 @@
 ---
+title: "Tarea 1B. Introducción a los modelos lineales generalizados"
+author: "Equipo 1"
 output:
-  pdf_document: default
-  html_document: default
+  pdf_document:
+    latex_engine: xelatex
+date: "`r Sys.Date()`"
+
+header-incluides:
+  - \documentclass[letterpaper,11pt]{article}
+  - \usepackage[utf8]{inputenc}
+  - \usepackage[T1]{fontenc}
+  - \usepackage{mathtools}
+  - \usepackage{commath}
+  - \usepackage[spanish,mexico]{babel} \spanishdecimal{.}
+  - \selectlanguage{spanish}
 ---
+
+```{r setup, include=FALSE}
+#Limpiamos entorno
+rm(list = ls(all.names = TRUE))
+gc() #Liberamos memoria
+
+#Este chunk lo explicaremos más adelante
+knitr::opts_chunk$set(
+	echo = F,
+	fig.align = "center",
+	fig.dim = c(7.0, 7.0),
+	fig.pos='H',
+#Agregamos configuraciones para evitar mensajes de advertencias y de errores en el archivo
+	message = FALSE,
+	warning = FALSE,
+	error = F
+)
+library(ggplot2)
+#Elegimos nuestra carpeta
+setwd("~/Escritorio/2025-2/sem_est_1/tarea_1/Seminario_Estadistica/Proyecto_1/Ejercicio_4")
+```
+
 ## 4. Modelos lineales generalizados para datos de conteos
 
 La base de datos _Preg4.csv_ contiene información sobre el número de casos de cáncer de pulmón (`Cases`) registrados entre 1968 y 1971
@@ -16,9 +50,17 @@ Notemos que para realizar el análisis la variable de conteos `Cases` depende de
 pues entre más grande la ciudad es mayor el número de casos que se pueden observar;
 de manera que el estudio se debe enfocar en las tasas de incidencia.
 
+```{r}
+Datos <- read.csv("Preg4.csv")
+
+
+```
+
 i. Presente una gráfica de dispersión en donde en el eje `x` se incluyan los grupos de edad (ordenados de menor edad a mayor) y en el eje `y` la tasa de incidencia (`Cases`/`Pop`) por cada cruce `Age-City`,
 distinguiendo con un color la Ciudad.
 Describa lo que se observa.
+
+
 
 ii. Como un primer modelo considere la distribución Poisson con liga logarítmica y las covariables `Age` y `City`, así como su interacción.
 Dado que las dos covariables son categóricas,
