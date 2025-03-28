@@ -4,10 +4,11 @@ author: "Equipo 1"
 output:
   pdf_document:
     latex_engine: xelatex
+geometry: margin=1.8cm
 date: "`r Sys.Date()`"
 
 header-incluides:
-  - \documentclass[letterpaper,11pt]{article}
+  - \documentclass[letterpaper,10pt]{article}
   - \usepackage[utf8]{inputenc}
   - \usepackage[T1]{fontenc}
   - \usepackage{mathtools}
@@ -25,7 +26,7 @@ gc() #Liberamos memoria
 knitr::opts_chunk$set(
 	echo = F,
 	fig.align = "center",
-	fig.dim = c(7.0, 7.0),
+	#fig.dim = c(7.0, 7.0),
 	fig.pos='H',
 #Agregamos configuraciones para evitar mensajes de advertencias y de errores en el archivo
 	message = FALSE,
@@ -37,64 +38,428 @@ library(ggplot2)
 setwd("~/Escritorio/2025-2/sem_est_1/tarea_1/Seminario_Estadistica/Proyecto_1/Ejercicio_4")
 ```
 
-## 4. Modelos lineales generalizados para datos de conteos
 
-La base de datos _Preg4.csv_ contiene información sobre el número de casos de cáncer de pulmón (`Cases`) registrados entre 1968 y 1971
-en cuatro cuidades de Dinamarca (City).
-En estos casos se registró también la edad de los pacientes
-(`Age`, variable categorizada en 5 grupos).
-El interés del análisis es estudiar si se puede indicar que
-a mayor edad existe mayor incidencia de cáncer de pulmón.
+```{r tabla, include=FALSE}
+library(kableExtra)
 
-Notemos que para realizar el análisis la variable de conteos `Cases` depende de forma inherente de la población de la ciudad (`Pop`),
-pues entre más grande la ciudad es mayor el número de casos que se pueden observar;
-de manera que el estudio se debe enfocar en las tasas de incidencia.
+tabla <- function(DataFrame){
+  
+  n <- ncol(DataFrame)
+  m <- nrow(DataFrame)
+  
+  c <- paste(rep("c", n), collapse = "")
+  
+  kbl(DataFrame, booktabs = FALSE, escape = FALSE,
+      format = "latex", longtable = TRUE, align = c) %>%
+    kable_styling(latex_options = c("hold_position"),
+                  position = "center", font_size = 10) %>%
+    column_spec(1, border_left = TRUE, border_right = FALSE) %>%
+    column_spec(2:(n-1), border_left = FALSE, border_right = FALSE) %>%
+    column_spec(n+1, border_left = FALSE, border_right = TRUE) %>%
+    row_spec(0, background = "#99D8C9", bold = TRUE) %>%
+    row_spec(1:m, background = "#DEEBF7")
+}
+```
 
-```{r}
+
+# Análisis relacional de la incidencia de cáncer de pulmón respecto a la edad.
+
+## Introducción
+
+El objetivo de este estudio es analizar la relación entre la edad y la incidencia de cáncer pulmonar. Para ese análisis se proporciona una base de daos obtenidso entre los años 1968 y 1971 en cuatro ciudades de Dinamarca (Fredericia, Horsens, Kolding y Vejle), en las cuales se registraron las incidencias de cáncer pulmonar en 5 rangos de edad (40-54, 55-59, 60-64, 65-69 y 70-74). Dado que se estudian ciudades distintas, se ha registrado también la población total de cada rango de edad presente en cada una de las ciudades registradas, lo que permite utilizar intensidades (incidencias relativas a las poblaciones totales) para poder comparar las poblaciones. Se espera poder argumentar que la relación entre la edad y la incidencia de cáncer es proporcional, es decir, a mayor edad, mayor incidencia de cáncer de pulmón.
+
+## Primer vistazo
+
+Lo primero que hacemos es realizar un scatterplot para darnos una idea general de cómo se encuentran los datos y que relación tienen entre sí.
+Para ello, comparamos los casos de incidencia (variable `cases`), con la población relativa de cada rango de edad (variable `Age`), diferenciando la ciudad de donde provienen las observaciones (variable `City`). Esto nos dará una idea de cuál es la rlación que sepretende estudiar para cada ciudad.
+
+```{r, "Captura de informacion"}
+
+# Obtencion de los datos
 Datos <- read.csv("Preg4.csv")
 
+# Conversion de variables de interes a tipo factor
+Datos$Age <- factor(Datos$Age)
+Datos$City <- factor(Datos$City)
+```
+
+
+
+```{r fig.dim=c(6, 3), "Grafica de visualizacion"}
+
+library(ggplot2)    # Graficas para visualizacion
+
+# Creamos el gráfico usando ggplot2
+
+ggplot(Datos, aes(x = Age, y = Cases / Pop, colour = City)) +
+    
+    # Boxplot
+    geom_boxplot(outlier.shape = NA, colour = "grey") +
+    
+    # Ajustes de etiquetas y formato
+    labs(x = "Age", y = "Cases / Pop",   # Etiquetas de las variables
+         title = "Incidencia de cancer pulmonar por rangos de edad") +   # Nombre del grafico
+    geom_point()
+```
+
+A partir del gráfico anterior podemos notar una aparente tendencia creciente de la incidencia de cancer pulmonar respecto a la edad, de manera general, también se podría considerar que la varianza es creciente, aunque el rango `60-64` parece que rompe esta tendencia, pero no se puede concluir más allá a partir de la información que tenemos.
+
+## Selección del modelo
+
+Dado que estamos trabajando con conteos (las observaciones son entreros no negativos) comenzamos con un modelo *Poisson* con todas las variables disponibles y las interacciones entre estas, empleando la función liga *log*, comunmente usada junto a esta distribución.
+
+Este modelo emplea el uso de variables binarias para las catrgorías de las variables categóricas que tenemos (`Age` y `City`) exeptuando las primeras categorías de cada variable (consideradas valor de referencia) y para las interacciones tentdermos todas plas posibles combinaciones de productos entre estas variables, lo que nos da un total de 19 variables.
+
+En total tenemos 19 variables por lo que el componente lineal constara de 20 paámentros $\beta$'s. Luego, como no estamos considerando las observaciones como tal sino las intensidades y empleamos la función liga $log$, ya que usaremos un término `offset` nuestro modelo se ve así:
+
+\begin{footnotesize}
+$$
+\eta_1(x) = \log \left( \dfrac{\mu}{p}\right )
+= \beta_0 + \sum\limits_{i = 1}^{19} \beta_i x_{i} 
+$$
+\end{footnotesize}
+
+Donde $\eta$ es nuestro componente lineal, $x$ es un vector con todas nuestra variables, $\log(p)$ es nuestra variables `offset` y $v_i$ son nuestras variables.
+
+
+```{r include=F, "Generacion del modelo 1"}
+
+# Variable offset
+Datos$logPop <- log(Datos$Pop)
+
+# Generacion de modelo Poisson con
+# funcion liga log (dado el uso del termino offset)
+modelo_1 <- glm(Cases ~ Age * City + offset(logPop) ,
+                # Se incluyen todas las interacciones y el termino offset
+                
+                family = poisson(link = "log"),
+                # Seleccion de modelo y funcion liga
+                
+                data = Datos)
+
+# Obtencion de la informacion del modelo
+summary(modelo_1)
+```
+
+Al tener demasiadas variabels consideramos reducir el modelo para facilitar el trabajo, decidimo eliminar las interacciones entre las variables `Age` y `City` para retirar 12 variables de nuestro primer modelo. El modelo 2 queda de la siguiente manera:
+
+\begin{footnotesize}
+$$
+\eta_2(x) = \log \left( \dfrac{\mu}{p}\right )
+= \beta_0 + \sum\limits_{i = 1}^7 \beta_i x_{i} 
+$$
+\end{footnotesize}
+
+
+```{r include=F, "Generacion del modelo 2"}
+
+# Generacion de modelo Poisson con
+# funcion liga log (dado el uso del termino offset)
+modelo_2 <- glm(Cases ~ Age + City + offset(logPop) ,
+                # Se incluyen componentes principales y el termino offset
+                
+                family = poisson(link = "log"),
+                # Seleccion de modelo y funcion liga
+                
+                data = Datos)
+
+# Obtencion de la informacion del modelo
+summary(modelo_2)
+```
+
+Para ver si el modelo anidado ha mejorado, empleamos pruebas de hipótesis simultaneas que nos permiten comparar ambos modelos, como el segundo modelo está anidado, se puede considerar que el modelo reducido es como el primero pero considerando algunos $\beta$'s iguales a cero.  
+Realizamos la prueba usando la función `anova()` de `R base`, la cual compara nuestros modelos anidados.  
+Basandonos en el `p-value` $= 0.4785 > \alpha = 0.05$ (nuestra significancia), podemos considerar plausible que el modelo 2 sea más adecuado que el modelo 1.
+
+```{r include=F, "Comparacion de modelos 1 y 2"}
+anova(modelo_1, modelo_2, test = "Chisq")
+# Comparacion de modelos
+```
+
+Considerando que aún tenemos bastantes variables en nuestro modelo reducido,realizamos un tercer modelo considerando únicamente la variable `Age`, con el fin de simplificar el modelo descartando la variable `City` el nuevo modelo quedaría de la siguiente manera:
+
+```{r include=F}
+library(multcomp) # Paquete que permite hacer pruebas de hipotesis
+
+K <- cbind(0, diag(7)) # Matriz de componentes
+
+m <- rep(0, 7) # Vector de comparacion
+
+summary(glht(modelo_2, linfct = K, rhs = m)) 
+# Pruebas de hipotesisi simultaneas 
+
+# Con estas pruebas verificamos que es plausible reducir aun mas el modelo
 
 ```
 
-i. Presente una gráfica de dispersión en donde en el eje `x` se incluyan los grupos de edad (ordenados de menor edad a mayor) y en el eje `y` la tasa de incidencia (`Cases`/`Pop`) por cada cruce `Age-City`,
-distinguiendo con un color la Ciudad.
-Describa lo que se observa.
+
+\begin{footnotesize}
+$$
+\eta_3(x) = \log \left( \dfrac{\mu}{p}\right ) = \beta_0 + \beta_1 x_1 + \beta_2 x_2 + \beta_3 x_3 + \beta_4 x_4
+$$
+\end{footnotesize}
 
 
 
-ii. Como un primer modelo considere la distribución Poisson con liga logarítmica y las covariables `Age` y `City`, así como su interacción.
-Dado que las dos covariables son categóricas,
-este modelo con interacciones tiene muchos parámetros y es deseable trabajar con uno más simple.
-Para esto considere un segundo modelo donde sólo se usa como covariable a `Age`.
-Realice una prueba de hipótesis para argumentar si es posible considerar el segundo modelo
-[recuerde que dado que los modelos son anidados, podría
-usar la función `anova`(`mod1`, `mod2`, `test = ”Chisq”`),
-también puede usar `multcomp`, pero hay muchos parámetros y podría ser tedioso].
-Complemente su decisión con lo que se observa en la gráfica en i) y
-con medidas como **AIC** o **BIC**.
+```{r include=F, "Generacion del modelo 3"}
 
-iii. Considerando el modelo seleccionado en ii),
-ajuste un modelo binomial negativo.
-Compare ambos modelos e indique cuál podría ser adecuado para realizar el análisis deseado.
-Con el modelo seleccionado,
-calcule intervalos de confianza simultáneos de las tasas de incidencia para cada grupo de edad,
-incluya estos en la gráfica presentada en i).
-Comente los resultados,
-en particular si se puede indicar que a mayor edad existe mayor incidencia de cáncer de pulmón.
+# Generacion de modelo Poisson con
+# funcion liga log (dado el uso del termino offset)
+modelo_3 <- glm(Cases ~ Age + offset(logPop) ,
+                # Solo se incluye la variable Age y el termino offset
+                
+                family = poisson(link = "log"),
+                # Seleccion de modelo y funcion liga
+                
+                data = Datos)
 
-iv. Los incisos anteriores usaron a la variable `Age` como categórica, sin embargo,
-eso dificulta un poco la interpretación,
-además de que por su naturaleza esa variable se podría haber registrado sin categorizar.
-Con los datos actuales,
-una aproximación sería usar el punto medio de cada intervalo de edad que define las categorías de `Age` y usar la `variable resultante` como una variable continua,
-llámela `Ageprima`.
-Ajuste modelos usando la distribución _Poisson_ y _Binomial Negativa_ con la covariable `Ageprima`,
-también considere la opción de incluir a `Ageprima2`.
-Entre esos 4 modelos indique cuál podría ser adecuado para realizar el análisis.
-Con ese modelo indique si a mayor edad existe mayor incidencia de cáncer de pulmón,
-por ejemplo,
-argumentando si la función es creciente considerando que el intervalo de edad que es de interés es entre 40 y 74 años.
-Presente una gráfica que complemente su análisis.
+# Obtencion de la informacion del modelo
+summary(modelo_3)
 
-\newpage
+```
 
+Nuevamente empleamos pruebas de hipótesis usando la función `anova()` de `R base`, la cual compara nuestros modelos anidados.
+
+```{r include=F, "Comparacion de modelos 2 y 3"}
+anova(modelo_2, modelo_3, test = "Chisq")
+# Comparacion de modelos
+```
+
+ 
+Comparando los `AIC`'s y `BIC`'s de los modelos anteriores:
+
+```{r}
+AIC <- c(AIC(modelo_1), AIC(modelo_2), AIC(modelo_3))
+
+
+BIC <- c(BIC(modelo_1), BIC(modelo_2), BIC(modelo_3))
+
+tab <- rbind(AIC, BIC) %>% as.data.frame()
+
+names(tab) <- c("Modelo 1", "Modelo 2", "Modelo 3")
+
+tabla(tab)
+```
+
+Podemos ver que el modelo 3 tiene menor `AIC` y `BIC`. Basandonos en la prueba de comparación de modelos cuyo `p-value` $= 0.1459 > \alpha = 0.05$ junto a la tabla anterior, es plausible considerar que el modelo 3 es el mejor. Esto implica que , según lo observado, la variable `City` no está afectando de manera considerable la incidencia de cáncer pulmonar. Volviendo a la gráfica, como se mencionó en el análisis de la misma, el comportamiento en las 4 ciudades parece ser el mismo.
+
+Con base a todo lo anterior optamos por pobar con un modelo binomial negativo con la misma función liga y suando únicamente la variables `Age` como en el modelo 3, para ello se emplea la función `glm.nb()` del paquete `MASS`, para luego comparar los modelos, esta vez veremos el `AIC` junto al `BIC`, y usaremos la estimación del paŕametro de dispersión, el cual debe ser cercano a 1.
+
+```{r include=F, "Generacion del modelo 4"}
+library(MASS) # Paquete con la distribucion binomial negativa
+
+# Generacion de modelo Poisson con
+# funcion liga log (dado el uso del termino offset)
+modelo_4 <- glm.nb(Cases ~ Age + offset(logPop) ,
+                   # Solo se incluye la variable Age y el termino offset
+                   
+                   link = "log",
+                   # Seleccion de funcion liga
+                   
+                   data = Datos)
+
+# Obtencion de la informacion del modelo
+summary(modelo_4)
+
+deviance(modelo_4)/df.residual(modelo_4)
+# Estimacion del parametro de dispersion
+```
+
+
+```{r}
+
+phi_1 <- deviance(modelo_1) / df.residual(modelo_1) 
+# Estimacion del parametro de dispersion modelo 1
+
+phi_2 <- deviance(modelo_2) / df.residual(modelo_2) 
+# Estimacion del parametro de dispersion modelo 2
+
+phi_3 <- deviance(modelo_3) / df.residual(modelo_3) 
+# Estimacion del parametro de dispersion modelo 3
+
+phi_4 <- deviance(modelo_4) / df.residual(modelo_4) 
+# Estimacion del parametro de dispersion modelo 4
+
+Phi <- c(phi_1, phi_2, phi_3, phi_4)
+
+
+
+Tab <- cbind(tab, c(AIC(modelo_4), BIC(modelo_4))) %>% 
+    rbind(Phi) %>% 
+    as.data.frame()
+
+names(Tab) <- c("Modelo 1", "Modelo 2", "Modelo 3", "Modelo 4")
+rownames(Tab)[3] <- "$\\hat{\\phi}$"
+
+tabla(Tab)
+```
+
+El parámetro de dispersión le los modelos 3 y 4 es precticamente el mismo, pero el modelo 3 tiene tanto `AIIC` como `BIC` menores al modelo 4, por lo que consideramos al modelo 3 el más adecuado para el análisis.
+
+## Intervalos de confianza
+
+Procedemos a calcular intervalos de confianza simultáneos de las tasas de incidencia para cada uno de nuestros grupos de edad.
+
+```{r fig.dim=c(6, 3)}
+# Nuestro modelo tiene 4 veriables binarias: x_1, x_2, x_3 y x_4
+# cada una corresponde a un rango de edad; veamos como se ve eta
+# valuada en cada rango.
+#
+# eta(40-54) = b_0
+# eta(55-59) = b_0 + b_1
+# eta(60-64) = b_0 + b_2
+# eta(65-69) = b_0 + b_3
+# eta(70-74) = b_0 + b_4
+
+
+# Con lo anterior, podemos hacer la matriz para cada combinacion
+
+K <- cbind(1, rbind(0, diag(4))) 
+# Matriz de combinaciones lineales de interes
+
+#-------------------------------------------------------------------
+# Obtenemos estimaciones puntuales de las combinaciones lineales
+
+Est <- glht(modelo_3, linfct = K)
+
+#--------------------------------------------------------------------
+# Obtenemos el intervalo de confianza para cada combinacion
+
+I_C <- confint(Est, level = 0.95)$confint %>% as.data.frame()
+
+library(purrr) # para usar la funcion map_df
+
+IC <- map_df(1:4, ~ I_C)
+
+datos <- Datos[, c("Cases", "Age", "Pop", "City")] %>% 
+    cbind(IC)
+
+rownames(datos) <- 1:20
+
+est_offset <- function(df, var, col){
+    return(var * exp(df[, col]))
+}
+
+datos[, 5:7] <- 5:7 %>% 
+    map(.f = function(.x) datos <- est_offset(datos, datos$Pop, .x))
+
+ggplot(data = Datos, aes(x = Age, y = Cases / Pop, color = City)) +
+    geom_point() +
+    geom_line(data = datos, aes(x = Age, y = Estimate / Pop, group = City), size = 1.1) +
+    geom_line(data = datos, aes(x = Age, y = lwr / Pop, group = City), linetype = 2) +
+    geom_line(data = datos, aes(x = Age, y = upr / Pop, group = City), linetype = 2)
+    
+```
+
+Con base en el gráfico anterior, dada la cerciente varianza en la incidencia con respecto a la edad, solo podemos indicar que a mayor edad existe mayor incidencia de cáncer pulmonar entre las edades 40 y 59, más allá no podemos asegurar nada.
+
+## Edad continua
+
+Utilizar la variable `Age` como categórica dificulta la interpretación de los resultados por lo que optamos por transformarla en una variable continua usando como referencia el valor medio de cada rango (`AgePrima`), ajustamos 4 nuevos modelos usando la distribución *Poisson* y la *Binoial Negativa*, empleando `AgePrima` y $\texttt{AgePrima}^2$.
+
+```{r}
+Datos$AgePrima <- 0
+Datos[Datos$Age == "40-54",]$AgePrima <- 47
+Datos[Datos$Age == "55-59",]$AgePrima <- 57
+Datos[Datos$Age == "60-64",]$AgePrima <- 62
+Datos[Datos$Age == "65-69",]$AgePrima <- 67
+Datos[Datos$Age == "70-74",]$AgePrima <- 72
+Datos$AgePrima2 <- Datos$AgePrima^2
+
+#==========================================================
+# Poisson simple
+
+modelo_cont_1 <- glm(Cases ~ AgePrima + offset(logPop) , 
+                family = poisson(link = "log"),
+                data = Datos)
+
+#----------------------------------------------------------
+# Poisson cuadratico
+
+modelo_cont_2 <- glm(Cases ~ AgePrima + AgePrima2 + offset(logPop) , 
+                family = poisson(link = "log"),
+                data = Datos)
+
+#----------------------------------------------------------
+# B. N. simple
+
+modelo_cont_3 <- glm.nb(Cases ~ AgePrima + offset(logPop) , 
+                link = "log",
+                data = Datos)
+
+#----------------------------------------------------------
+# B. N. cuadratico
+
+modelo_cont_4 <- glm.nb(Cases ~ AgePrima + AgePrima2 + offset(logPop) , 
+                   link = "log",
+                   data = Datos)
+
+#==========================================================
+
+AIC <- c(AIC(modelo_cont_1), AIC(modelo_cont_2), AIC(modelo_cont_3), AIC(modelo_cont_4))
+
+BIC <- c(BIC(modelo_cont_1), BIC(modelo_cont_2), BIC(modelo_cont_3), BIC(modelo_cont_4))
+
+#----------------------------------------------------------
+
+phi_1 <- deviance(modelo_cont_1) / df.residual(modelo_cont_1) 
+phi_2 <- deviance(modelo_cont_2) / df.residual(modelo_cont_2) 
+phi_3 <- deviance(modelo_cont_3) / df.residual(modelo_cont_3) 
+phi_4 <- deviance(modelo_cont_4) / df.residual(modelo_cont_4)
+
+Phi <- c(phi_1, phi_2, phi_3, phi_4)
+
+#----------------------------------------------------------
+
+tab <- rbind(AIC, BIC, Phi) %>% as.data.frame()
+
+names(tab) <- c("Modelo continuo 1", "Modelo continuo 2", "Modelo continuo 3", "Modelo continuo 4")
+
+rownames(tab)[3] <- "$\\hat{\\phi}$"
+
+tabla(tab)
+
+```
+
+La tabla anterior compara el `AIC`, el `BIC` y la estimación del parámetro de dispersión $\hat\phi$ de los 4 modelos nuevos. Basándonos en dicha tabla, parece que el modelo más adecuado para el análisis puede ser el modelo continuo 2, el cual emplea una distribución *Poisson* y un polinomio de segundo grado de la variable `AgePrima` como se muestra a continuación:
+
+$$
+\eta(x) = \log\left( \dfrac{\mu}{p} \right)
+= \beta_0 + \beta_1 x + \beta_2 x^2
+$$
+
+
+```{r fig.dim=c(6, 3)}
+
+K <- cbind(1, Datos$AgePrima, Datos$AgePrima2) 
+# Matriz de combinaciones lineales de interes
+
+#-------------------------------------------------------------------
+# Obtenemos estimaciones puntuales de las combinaciones lineales
+
+Est <- glht(modelo_cont_2, linfct = K)
+
+#--------------------------------------------------------------------
+# Obtenemos el intervalo de confianza para cada combinacion
+
+I_C <- confint(Est, level = 0.95)$confint %>% as.data.frame()
+
+datos <- Datos[, c("Cases", "AgePrima", "Pop", "City")] %>% 
+    cbind(I_C)
+
+est_offset <- function(df, var, col){
+    return(var * exp(df[, col]))
+}
+
+datos[, 5:7] <- 5:7 %>% 
+    map(.f = function(.x) datos <- est_offset(datos, datos$Pop, .x))
+
+ggplot(data = Datos, aes(x = AgePrima, y = Cases / Pop, color = City)) +
+    geom_point() +
+    geom_line(data = datos, aes(x = AgePrima, y = Estimate / Pop, group = City), size = 1.1) +
+    geom_line(data = datos, aes(x = AgePrima, y = lwr / Pop, group = City), linetype = 2) +
+    geom_line(data = datos, aes(x = AgePrima, y = upr / Pop, group = City), linetype = 2)
+    
+```
+
+Con base en el nuevo modelo, podemos indicar que a mayor edad hay mayor incidencia en cancer de pulmón al menos entre los 40 y los 67 años, saliendo de ese rango no podemos aseurar lo mismo.
