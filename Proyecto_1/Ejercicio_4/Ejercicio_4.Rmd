@@ -66,12 +66,12 @@ tabla <- function(DataFrame){
 
 ## Introducción
 
-El objetivo de este estudio es analizar la relación entre la edad y la incidencia de cáncer pulmonar. Para ese análisis se proporciona una base de daos obtenidso entre los años 1968 y 1971 en cuatro ciudades de Dinamarca (Fredericia, Horsens, Kolding y Vejle), en las cuales se registraron las incidencias de cáncer pulmonar en 5 rangos de edad (40-54, 55-59, 60-64, 65-69 y 70-74). Dado que se estudian ciudades distintas, se ha registrado también la población total de cada rango de edad presente en cada una de las ciudades registradas, lo que permite utilizar intensidades (incidencias relativas a las poblaciones totales) para poder comparar las poblaciones. Se espera poder argumentar que la relación entre la edad y la incidencia de cáncer es proporcional, es decir, a mayor edad, mayor incidencia de cáncer de pulmón.
+El objetivo de este estudio es analizar la relación entre la edad y la incidencia de cáncer pulmonar. Para ese análisis se proporciona una base de datos obtenidos entre los años 1968 y 1971 en cuatro ciudades de Dinamarca (Fredericia, Horsens, Kolding y Vejle), en las cuales se registraron las incidencias de cáncer pulmonar en 5 rangos de edad (40-54, 55-59, 60-64, 65-69 y 70-74). Dado que se estudian ciudades distintas, se ha registrado también la población total de cada rango de edad presente en cada una de las ciudades registradas, lo que permite utilizar intensidades (incidencias relativas a las poblaciones totales) para poder comparar las poblaciones. Se espera poder argumentar que la relación entre la edad y la incidencia de cáncer es proporcional, es decir, a mayor edad, mayor incidencia de cáncer de pulmón.
 
 ## Primer vistazo
 
 Lo primero que hacemos es realizar un scatterplot para darnos una idea general de cómo se encuentran los datos y que relación tienen entre sí.
-Para ello, comparamos los casos de incidencia (variable `cases`), con la población relativa de cada rango de edad (variable `Age`), diferenciando la ciudad de donde provienen las observaciones (variable `City`). Esto nos dará una idea de cuál es la rlación que sepretende estudiar para cada ciudad.
+Para ello, comparamos los casos de incidencia (variable `cases`), con la población relativa de cada rango de edad (variable `Age`), diferenciando la ciudad de donde provienen las observaciones (variable `City`). Esto nos dará una idea de cuál es la relación que se pretende estudiar para cada ciudad.
 
 ```{r, "Captura de informacion"}
 
@@ -98,19 +98,19 @@ ggplot(Datos, aes(x = Age, y = Cases / Pop, colour = City)) +
     
     # Ajustes de etiquetas y formato
     labs(x = "Age", y = "Cases / Pop",   # Etiquetas de las variables
-         title = "Incidencia de cancer pulmonar por rangos de edad") +   # Nombre del grafico
+         title = "Incidencia de cáncer pulmonar por rangos de edad") +   # Nombre del grafico
     geom_point()
 ```
 
-A partir del gráfico anterior podemos notar una aparente tendencia creciente de la incidencia de cancer pulmonar respecto a la edad, de manera general, también se podría considerar que la varianza es creciente, aunque el rango `60-64` parece que rompe esta tendencia, pero no se puede concluir más allá a partir de la información que tenemos.
+A partir del gráfico anterior podemos notar una aparente tendencia creciente de la incidencia de cáncer pulmonar respecto a la edad, de manera general, también se podría considerar que la varianza es creciente, aunque el rango `60-64` parece que rompe esta tendencia, pero no se puede concluir más allá a partir de la información que tenemos.
 
 ## Selección del modelo
 
-Dado que estamos trabajando con conteos (las observaciones son entreros no negativos) comenzamos con un modelo *Poisson* con todas las variables disponibles y las interacciones entre estas, empleando la función liga *log*, comunmente usada junto a esta distribución.
+Dado que estamos trabajando con conteos (las observaciones son enteros no negativos) comenzamos con un modelo *Poisson* con todas las variables disponibles y las interacciones entre estas, empleando la función liga *log*, comunmente usada junto a esta distribución.
 
-Este modelo emplea el uso de variables binarias para las catrgorías de las variables categóricas que tenemos (`Age` y `City`) exeptuando las primeras categorías de cada variable (consideradas valor de referencia) y para las interacciones tentdermos todas plas posibles combinaciones de productos entre estas variables, lo que nos da un total de 19 variables.
+Este modelo emplea el uso de variables binarias para las categorías de las variables categóricas que tenemos (`Age` y `City`) exceptuando las primeras categorías de cada variable (consideradas valor de referencia) y para las interacciones tendremos todas las posibles combinaciones de productos entre estas variables, lo que nos da un total de 19 variables.
 
-En total tenemos 19 variables por lo que el componente lineal constara de 20 paámentros $\beta$'s. Luego, como no estamos considerando las observaciones como tal sino las intensidades y empleamos la función liga $log$, ya que usaremos un término `offset` nuestro modelo se ve así:
+En total tenemos 19 variables por lo que el componente lineal constara de 20 parámentros $\beta$'s. Luego, como no estamos considerando las observaciones como tal sino las intensidades y empleamos la función liga $log$, ya que usaremos un término `offset` nuestro modelo se ve así:
 
 \begin{footnotesize}
 $$
@@ -141,7 +141,7 @@ modelo_1 <- glm(Cases ~ Age * City + offset(logPop) ,
 summary(modelo_1)
 ```
 
-Al tener demasiadas variabels consideramos reducir el modelo para facilitar el trabajo, decidimo eliminar las interacciones entre las variables `Age` y `City` para retirar 12 variables de nuestro primer modelo. El modelo 2 queda de la siguiente manera:
+Al tener demasiadas variables consideramos reducir el modelo para facilitar el trabajo, decidimos eliminar las interacciones entre las variables `Age` y `City` para retirar 12 variables de nuestro primer modelo. El modelo 2 queda de la siguiente manera:
 
 \begin{footnotesize}
 $$
@@ -167,9 +167,9 @@ modelo_2 <- glm(Cases ~ Age + City + offset(logPop) ,
 summary(modelo_2)
 ```
 
-Para ver si el modelo anidado ha mejorado, empleamos pruebas de hipótesis simultaneas que nos permiten comparar ambos modelos, como el segundo modelo está anidado, se puede considerar que el modelo reducido es como el primero pero considerando algunos $\beta$'s iguales a cero.  
+Para ver si el modelo anidado ha mejorado, empleamos pruebas de hipótesis simultáneas que nos permiten comparar ambos modelos, como el segundo modelo está anidado, se puede considerar que el modelo reducido es como el primero pero considerando algunos $\beta$'s iguales a cero.  
 Realizamos la prueba usando la función `anova()` de `R base`, la cual compara nuestros modelos anidados.  
-Basandonos en el `p-value` $= 0.4785 > \alpha = 0.05$ (nuestra significancia), podemos considerar plausible que el modelo 2 sea más adecuado que el modelo 1.
+Basándonos en el `p-value` $= 0.4785 > \alpha = 0.05$ (nuestra significancia), podemos considerar plausible que el modelo 2 sea más adecuado que el modelo 1.
 
 ```{r include=F, "Comparacion de modelos 1 y 2"}
 anova(modelo_1, modelo_2, test = "Chisq")
@@ -241,9 +241,9 @@ names(tab) <- c("Modelo 1", "Modelo 2", "Modelo 3")
 tabla(tab)
 ```
 
-Podemos ver que el modelo 3 tiene menor `AIC` y `BIC`. Basandonos en la prueba de comparación de modelos cuyo `p-value` $= 0.1459 > \alpha = 0.05$ junto a la tabla anterior, es plausible considerar que el modelo 3 es el mejor. Esto implica que , según lo observado, la variable `City` no está afectando de manera considerable la incidencia de cáncer pulmonar. Volviendo a la gráfica, como se mencionó en el análisis de la misma, el comportamiento en las 4 ciudades parece ser el mismo.
+Podemos ver que el modelo 3 tiene menor `AIC` y `BIC`. Basados en la prueba de comparación de modelos cuyo `p-value` $= 0.1459 > \alpha = 0.05$ junto a la tabla anterior, es plausible considerar que el modelo 3 es el mejor. Esto implica que , según lo observado, la variable `City` no está afectando de manera considerable la incidencia de cáncer pulmonar. Volviendo a la gráfica, como se mencionó en el análisis de la misma, el comportamiento en las 4 ciudades parece ser el mismo.
 
-Con base a todo lo anterior optamos por pobar con un modelo binomial negativo con la misma función liga y suando únicamente la variables `Age` como en el modelo 3, para ello se emplea la función `glm.nb()` del paquete `MASS`, para luego comparar los modelos, esta vez veremos el `AIC` junto al `BIC`, y usaremos la estimación del paŕametro de dispersión, el cual debe ser cercano a 1.
+Con base a todo lo anterior optamos por pobar con un modelo binomial negativo con la misma función liga y usando únicamente la variables `Age` como en el modelo 3, para ello se emplea la función `glm.nb()` del paquete `MASS`, para luego comparar los modelos, esta vez veremos el `AIC` junto al `BIC`, y usaremos la estimación del paŕametro de dispersión, el cual debe ser cercano a 1.
 
 ```{r include=F, "Generacion del modelo 4"}
 library(MASS) # Paquete con la distribucion binomial negativa
@@ -462,4 +462,4 @@ ggplot(data = Datos, aes(x = AgePrima, y = Cases / Pop, color = City)) +
     
 ```
 
-Con base en el nuevo modelo, podemos indicar que a mayor edad hay mayor incidencia en cancer de pulmón al menos entre los 40 y los 67 años, saliendo de ese rango no podemos aseurar lo mismo.
+Con base en el nuevo modelo, podemos indicar que a mayor edad hay mayor incidencia en cáncer de pulmón al menos entre los 40 y los 67 años, saliendo de ese rango no podemos asegurar lo mismo.
