@@ -49,6 +49,7 @@ library(mlbench)      # Para cargar el dataset de mlbench)
 library(glmnet)
 library(stats )
 library(bestglm) # Paquete para buscar el mejor subset de un glm 
+library(scales)
 ```
 
 
@@ -180,22 +181,28 @@ df_resultados <- rbind(df_resultados, nueva_fila_resultados( "Stepwise_both", AI
 ```
 
 
-```{r lasso}
-x <- model.matrix(diabetes ~ . , data = PimaIndiansDiabetes)[, -1] #Quitando el intercepto 
-y <- PimaIndiansDiabetes$diabetes  #Variables binarias de si el paciente tiene o no diabetes
+```{r Funcion_lasso}
+#Funcion para genralizar la funcion lasso y pdoer evalur distintos modelos
+#Parametros:
+# modelo: modelo de regresion a evaluar 
 
-#Ajusta el modelo lasso a nuestro modelo de regresion  sirve para ver las trayectoras de nuestro parametro lambda
-modelo_lasso <- glmnet(
-  x = x,
-  y = y,
-  family = "binomial",  
-  alpha = 1,          
-  standardize = TRUE,
-  nlambda = 100
-)
+Rugalarizacion_Lasso <- function(modelo){
+    formula <- as.formula(paste("diabetes ~", modelo ))
+    x <- model.matrix(formula , data = PimaIndiansDiabetes)[, -1] #Quitando el intercepto 
+    y <- PimaIndiansDiabetes$diabetes  #Variables binarias de si el paciente tiene o no diabetes
 
-#Ahora toca elegir el mejor lambda, para eso utilizaremos la validacion cruzada
-cv_error <- cv.glmnet(
+    #Ajusta el modelo lasso a nuestro modelo de regresion  sirve para ver las trayectoras de nuestro parametro lambda
+    modelo_lasso <- glmnet(
+    x = x,
+    y = y,
+    family = "binomial",  
+    alpha = 1,          
+    standardize = TRUE,
+    nlambda = 100
+  )
+
+  #Ahora toca elegir el mejor lambda, para eso utilizaremos la validacion cruzada
+  cv_error <- cv.glmnet(
               x      = x,
               y      = y,
               alpha  = 1,
@@ -204,19 +211,23 @@ cv_error <- cv.glmnet(
               type.measure = "deviance",
               standardize  = TRUE
            )
+  salida <- list(
+    modelo_lasso = modelo_lasso,
+    cv_error = cv_error
+  )
+  return(salida)
+}
 
+#Fucnion para graficar como se ve la caide del parametro lambda en el ajuste lasso 
+#Parametros:
+# modelo: model, tenemos que pasar la salida de model_lasso, para que funcione y se calcule de la funcion Regularizacion_lasso
 
-
-```
-
-```{r}
-
-library(scales)
-regularizacion <- modelo_lasso$beta %>% 
+graficacion_lasso <- function(model_lasso){
+  regularizacion <- model_lasso$beta %>% 
                   as.matrix() %>%
                   t() %>% 
                   as_tibble() %>%
-                  mutate(lambda = modelo_lasso$lambda)
+                  mutate(lambda = model_lasso$lambda)
 
 regularizacion <- regularizacion %>%
                    pivot_longer(
@@ -235,16 +246,56 @@ regularizacion %>%
   labs(title = "Coeficientes del modelo en función de la regularización") +
   theme_bw() +
   theme(legend.position = "none")
+}
+
+
+AIC_lasso <- function(modelo, cv_error){
+  #Preparacion data
+  formula <- as.formula(paste("diabetes ~", modelo ))
+  x <- model.matrix(formula , data = PimaIndiansDiabetes)[, -1] #Quitando el intercepto 
+  y <- ifelse(PimaIndiansDiabetes$diabetes == "pos", 1, 0)
+
+  pred_prob <- predict(cv_error, newx = x, s = "lambda.min", type = "response") #Predicciones del modelo, con la lambda minima
+
+  logLik_lasso <- sum(y * log(pred_prob) + (1 - y) * log(1 - pred_prob)) # Calcular log-verosimilitud del modelo
+
+  # Número de coeficientes distintos de cero (excluyendo intercepto)
+  coef_lasso <- coef(cv_error, s = "lambda.min")
+  k <- sum(coef_lasso[-1] != 0)
+
+  # Calcular AIC
+  AIC_lasso <- -2 * logLik_lasso + 2 * k
+  AIC_lasso
+  
+  #Regreso de nuestro df
+  datosLasso <- list(
+      coef = coef(cv_error, s = "lambda.min"), 
+      AIC = AIC_lasso
+  )
+  
+  return(datosLasso)
+}
+
+
 ```
 
+
+
 ```{r}
-cv_error$lambda.min
+simple <- Rugalarizacion_Lasso(" . ")
+graficacion_lasso(simple$modelo_lasso )
+
+print(AIC_lasso(" . ", simple$cv_error))
 ```
 
 
 
+
+
 ```{r}
-coef(cv_error, s = "lambda.min")
+
+ df_resultados <- rbind(df_resultados, nueva_fila_resultados( "Lasso", AIC_lasso, 7))
+
  
 ```
 
@@ -257,27 +308,54 @@ head(PimaIndiansDiabetes)
 
 ```{r}
 
-# Preparar datos
-x <- model.matrix(diabetes ~ ., data = PimaIndiansDiabetes)[, -1]
-y <- ifelse(PimaIndiansDiabetes$diabetes == "pos", 1, 0)
 
 
-pred_prob <- predict(cv_error, newx = x, s = "lambda.min", type = "response") #Predicciones del modelo, con la lambda minima
-
-
-logLik_lasso <- sum(y * log(pred_prob) + (1 - y) * log(1 - pred_prob)) # Calcular log-verosimilitud del modelo
-
-# Número de coeficientes distintos de cero (excluyendo intercepto)
-coef_lasso <- coef(cv_error, s = "lambda.min")
-k <- sum(coef_lasso[-1] != 0)
-
-# Calcular AIC
-AIC_lasso <- -2 * logLik_lasso + 2 * k
-AIC_lasso
+```
 
 
 
-df_resultados <- rbind(df_resultados, nueva_fila_resultados( "Lasso", AIC_lasso, 7))
+-------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+```{r}
+modeloInteracciones <- glm(diabetes ~ (.)^2 + I(pregnant^2)+ I(glucose^2) +I(pressure^2)+I(triceps^2)+I(insulin^2)+I(mass^2)+I(pedigree^2)+I(age^2) , family = binomial(link = "logit"), data = PimaIndiansDiabetes)
+
+```
+
+
+
+```{r}
+modelo_conpleto_step <- step(
+  object = modeloInteracciones,
+  direction = "backward",
+  scope = list(upper = modeloInteracciones, lower = ~1),
+  trace = FALSE
+)
+
+df_resultados <- rbind(df_resultados, nueva_fila_resultados( "Stepwise_Backward Interacciones", AIC(modelo_conpleto_step), length(modelo_conpleto_step$coefficients)-1))
+```
+
+
+
+
+
+```{r}
+
+x <- model.matrix(diabetes ~ . , data = PimaIndiansDiabetes)[, -1] #Quitando el intercepto 
+y <- PimaIndiansDiabetes$diabetes  #Variables binarias de si el paciente tiene o no diabetes
+
+
+#Ahora toca elegir el mejor lambda, para eso utilizaremos la validacion cruzada
+cv_error <- cv.glmnet(
+              x      = x,
+              y      = y,
+              alpha  = 1,
+              nfolds = 10,
+              family = "binomial",  
+              type.measure = "deviance",
+              standardize  = TRUE
+           )
 
 ```
 
@@ -287,16 +365,14 @@ df_resultados <- rbind(df_resultados, nueva_fila_resultados( "Lasso", AIC_lasso,
 
 
 
+```{r}
+pruebas12 <- list(
+  a = "aa",
+  b = "bb"
+)
 
-
-
-
-
-
-
-
-
-
+pruebas12$a
+```
 
 
 
