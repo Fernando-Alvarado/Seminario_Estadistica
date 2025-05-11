@@ -1,0 +1,272 @@
+---
+author: "Fernando Alvarado"
+date: "2025-03-12"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+#Empezamos limpiando nuestro ambiente
+rm(list = ls(all.names = TRUE))
+
+
+# Configuración global de los bloques de código (chunk's)
+knitr::opts_chunk$set(
+	echo = FALSE,
+	fig.align = "center",
+	fig.dim = c(5.0, 4.0),
+	fig.pos = "H",
+#Agregamos configuraciones para evitar mensajes de advertencias y de errores en el archivo
+	message = FALSE,
+	warning = FALSE,
+	error = F
+)
+
+
+
+# Librerias
+library(dplyr)      # Para el manejo de datos
+library(tidyr)
+library(tibble)    # Manejo de df
+library(ggplot2)    # Para realizar gráficas
+library(kableExtra) # Para un mejor manejo de tablas
+library(knitr)
+library(purrr)      # Para la función map y map2
+# Para purebas de hipotesis
+library(multcomp)   # Para pruebas de hipótesis
+library(car)        # Para funciones útiles de modelos de regresión lineal múltiple
+library(broom)      # Para obtener los residuales estandarizados
+library(purrr)      # Para la función map y map2
+library(lmtest )    #Checar homoceasticidad
+library(nortest )
+
+library(esquisse) # Graficacion sencilla
+
+# Libreria datos
+library(mlbench)      # Para cargar el dataset de mlbench)
+
+# Libreria eleccion modelos 
+library(glmnet)
+library(stats )
+library(bestglm) # Paquete para buscar el mejor subset de un glm 
+```
+
+
+
+```{r Reultados_Datos}
+
+# Cargar el dataset
+data("PimaIndiansDiabetes")
+
+# Ver las primeras filas
+head(PimaIndiansDiabetes)
+
+df_resultados <- data.frame(
+  Metodo = character(),
+  AIC = numeric(),
+  numero_bettas = integer(),
+  
+  stringsAsFactors = FALSE
+)
+
+
+
+
+
+nueva_fila_resultados <- function( metodo, AIC, numero_bettas) {
+  fila <- data.frame(
+    Metodo = metodo,
+    AIC = AIC,
+    numero_bettas = numero_bettas,
+    stringsAsFactors = FALSE
+  )
+  
+
+  return(fila)
+  
+}
+
+
+
+```
+
+
+```{r Modelo_logit}
+#Modelo logit
+modelo <- glm(diabetes ~ ., family = binomial(link = "logit"), data = PimaIndiansDiabetes)
+modelo_nulo <- glm(diabetes ~ 1, family = binomial(link = "logit"), data = PimaIndiansDiabetes)
+# Ver resumen
+summary(modelo_nulo)
+```
+```{r}
+library(tibble)
+df_coeficientes <- modelo$coefficients %>%
+                   enframe(name = "predictor", value = "coeficiente")
+
+df_coeficientes %>%
+ filter(predictor != "(Intercept)") %>%
+ ggplot() +
+  aes(x = predictor, y = coeficiente) +
+  geom_col(fill = "#0C4C8A") +
+  theme_minimal()
+
+```
+
+Grafica donde podemos observar los coefieicnetes de nuestro modelo, agregando todas las variables.
+
+
+```{r Mejor_subset}
+
+dataBest <- PimaIndiansDiabetes %>%
+  mutate(y = ifelse(as.character(diabetes) == "pos", 1, 0)) %>%
+  dplyr::select( pregnant, glucose, pressure, triceps, insulin, mass, pedigree, age, y)
+
+dataBest <- na.omit(dataBest)
+
+modelo_best <- bestglm(
+  Xy = dataBest,
+  family = binomial,      
+  IC = "AIC",
+  method = "exhaustive"
+)
+
+
+df_resultadosz<- 
+
+
+df_resultados <- rbind(df_resultados, nueva_fila_resultados( "Mejor Subset", modelo_best$BestModel$aic, length(modelo_best$BestModel$coefficients)-1))
+
+```
+
+
+```{r Stepwise}
+
+#Haciendolo Backward
+modelo_step <- step(
+  object = modelo,
+  direction = "backward",
+  scope = list(upper = ~ ., lower = ~1),
+  trace = FALSE
+)
+         # Ver el AIC del modelo final
+df_resultados <- rbind(df_resultados, nueva_fila_resultados( "Stepwise_Backward", AIC(modelo_step), length(modelo_step$coefficients)-1))
+
+#Haciendolo Fordward
+modelo_forward <- step(
+  object = modelo_nulo,
+  direction = "forward",
+  scope = list(lower = ~1, upper =  modelo),
+  trace = FALSE
+)
+df_resultados <- rbind(df_resultados, nueva_fila_resultados( "Stepwise_forward", AIC(modelo_forward), length(modelo_forward$coefficients)-1))
+
+
+
+# En ambas direcciones
+modelo_both <- step(
+  object = modelo_nulo,
+  scope = list(lower = ~1, upper = modelo),
+  direction = "both",
+  trace = FALSE
+)
+ 
+df_resultados <- rbind(df_resultados, nueva_fila_resultados( "Stepwise_both", AIC(modelo_both), length(modelo_both$coefficients)-1))
+
+```
+
+
+```{r lasso}
+x <- model.matrix(diabetes ~ . , data = PimaIndiansDiabetes)[, -1] #Quitando el intercepto 
+y <- PimaIndiansDiabetes$diabetes  #Variables binarias de si el paciente tiene o no diabetes
+
+modelo_lasso <- glmnet(
+  x = x,
+  y = y,
+  family = "binomial",  
+  alpha = 1,          
+  standardize = TRUE,
+  nlambda = 100
+)
+
+
+plot(modelo_lasso)
+
+```
+
+
+
+```{r}
+head(PimaIndiansDiabetes)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
