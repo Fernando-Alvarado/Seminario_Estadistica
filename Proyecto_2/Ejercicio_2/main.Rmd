@@ -96,7 +96,12 @@ nueva_fila_resultados <- function( metodo, AIC, numero_bettas) {
 modelo <- glm(diabetes ~ ., family = binomial(link = "logit"), data = PimaIndiansDiabetes)
 modelo_nulo <- glm(diabetes ~ 1, family = binomial(link = "logit"), data = PimaIndiansDiabetes)
 # Ver resumen
-summary(modelo_nulo)
+
+
+summary(modelo)
+
+
+
 ```
 ```{r}
 library(tibble)
@@ -179,6 +184,7 @@ df_resultados <- rbind(df_resultados, nueva_fila_resultados( "Stepwise_both", AI
 x <- model.matrix(diabetes ~ . , data = PimaIndiansDiabetes)[, -1] #Quitando el intercepto 
 y <- PimaIndiansDiabetes$diabetes  #Variables binarias de si el paciente tiene o no diabetes
 
+#Ajusta el modelo lasso a nuestro modelo de regresion  sirve para ver las trayectoras de nuestro parametro lambda
 modelo_lasso <- glmnet(
   x = x,
   y = y,
@@ -188,9 +194,58 @@ modelo_lasso <- glmnet(
   nlambda = 100
 )
 
+#Ahora toca elegir el mejor lambda, para eso utilizaremos la validacion cruzada
+cv_error <- cv.glmnet(
+              x      = x,
+              y      = y,
+              alpha  = 1,
+              nfolds = 10,
+              family = "binomial",  
+              type.measure = "deviance",
+              standardize  = TRUE
+           )
 
-plot(modelo_lasso)
 
+
+```
+
+```{r}
+
+library(scales)
+regularizacion <- modelo_lasso$beta %>% 
+                  as.matrix() %>%
+                  t() %>% 
+                  as_tibble() %>%
+                  mutate(lambda = modelo_lasso$lambda)
+
+regularizacion <- regularizacion %>%
+                   pivot_longer(
+                     cols = !lambda, 
+                     names_to = "predictor",
+                     values_to = "coeficientes"
+                   )
+
+regularizacion %>%
+  ggplot(aes(x = lambda, y = coeficientes, color = predictor)) +
+  geom_line() +
+  scale_x_log10(
+    breaks = trans_breaks("log10", function(x) 10^x),
+    labels = trans_format("log10", math_format(10^.x))
+  ) +
+  labs(title = "Coeficientes del modelo en función de la regularización") +
+  theme_bw() +
+  theme(legend.position = "none")
+```
+
+```{r}
+cv_error$lambda.min
+```
+
+
+
+```{r}
+coef(cv_error, s = "lambda.min")
+ 
 ```
 
 
@@ -200,6 +255,31 @@ head(PimaIndiansDiabetes)
 ```
 
 
+```{r}
+
+# Preparar datos
+x <- model.matrix(diabetes ~ ., data = PimaIndiansDiabetes)[, -1]
+y <- ifelse(PimaIndiansDiabetes$diabetes == "pos", 1, 0)
+
+
+pred_prob <- predict(cv_error, newx = x, s = "lambda.min", type = "response") #Predicciones del modelo, con la lambda minima
+
+
+logLik_lasso <- sum(y * log(pred_prob) + (1 - y) * log(1 - pred_prob)) # Calcular log-verosimilitud del modelo
+
+# Número de coeficientes distintos de cero (excluyendo intercepto)
+coef_lasso <- coef(cv_error, s = "lambda.min")
+k <- sum(coef_lasso[-1] != 0)
+
+# Calcular AIC
+AIC_lasso <- -2 * logLik_lasso + 2 * k
+AIC_lasso
+
+
+
+df_resultados <- rbind(df_resultados, nueva_fila_resultados( "Lasso", AIC_lasso, 7))
+
+```
 
 
 
@@ -220,14 +300,9 @@ head(PimaIndiansDiabetes)
 
 
 
+Referencias (Inspiracion de graficas):
 
-
-
-
-
-
-
-
+Selección de predictores: subset selection, ridge, lasso y reducción de dimensionalidad por Joaquín Amat Rodrigo, disponible con licencia CC BY-NC-SA 4.0 en https://www.cienciadedatos.net/documentos/31_seleccion_de_predictores_subset_selection_ridge_lasso_dimension_reduction
 
 
 
