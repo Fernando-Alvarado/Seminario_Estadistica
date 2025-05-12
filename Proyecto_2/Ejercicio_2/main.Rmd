@@ -82,8 +82,8 @@ nueva_fila_resultados <- function( metodo, AIC, numero_bettas) {
     stringsAsFactors = FALSE
   )
   
-
-  return(fila)
+  df_resultados <- rbind(df_resultados, fila)
+  return(df_resultados)
   
 }
 
@@ -137,46 +137,56 @@ modelo_best <- bestglm(
 )
 
 
-df_resultadosz<- 
+
+df_resultados <-nueva_fila_resultados( "Mejor Subset", modelo_best$BestModel$aic, length(modelo_best$BestModel$coefficients)-1)
 
 
-df_resultados <- rbind(df_resultados, nueva_fila_resultados( "Mejor Subset", modelo_best$BestModel$aic, length(modelo_best$BestModel$coefficients)-1))
+
+
 
 ```
 
 
+
+
+
 ```{r Stepwise}
 
-#Haciendolo Backward
-modelo_step <- step(
-  object = modelo,
-  direction = "backward",
-  scope = list(upper = ~ ., lower = ~1),
-  trace = FALSE
-)
-         # Ver el AIC del modelo final
-df_resultados <- rbind(df_resultados, nueva_fila_resultados( "Stepwise_Backward", AIC(modelo_step), length(modelo_step$coefficients)-1))
+StepwiseBack <- function(modelo, link = "logit"){
+   formula <- as.formula(paste("diabetes ~", modelo ))
+   model <- glm(formula, family = binomial(link = link), data = PimaIndiansDiabetes)
+   #Haciendolo Backward
+   modelo_step <- step(
+      object = model,
+      direction = "backward",
+      scope = list(upper = model, lower = ~1),
+      trace = FALSE
+  )
+  return(modelo_step) 
+}
 
+
+modeloInteracciones <- StepwiseBack(" . ")
+         # Ver el AIC del modelo final
+
+df_resultados <- nueva_fila_resultados("Stepwise_Backward", AIC(modeloInteracciones), length(modeloInteracciones$coefficients)-1)
 #Haciendolo Fordward
-modelo_forward <- step(
-  object = modelo_nulo,
-  direction = "forward",
-  scope = list(lower = ~1, upper =  modelo),
-  trace = FALSE
-)
-df_resultados <- rbind(df_resultados, nueva_fila_resultados( "Stepwise_forward", AIC(modelo_forward), length(modelo_forward$coefficients)-1))
+#modelo_forward <- step(
+#  object = modelo_nulo,
+#  direction = "forward",
+#  scope = list(lower = ~1, upper =  modelo),
+#  trace = FALSE
+#)
 
 
 
 # En ambas direcciones
-modelo_both <- step(
-  object = modelo_nulo,
-  scope = list(lower = ~1, upper = modelo),
-  direction = "both",
-  trace = FALSE
-)
- 
-df_resultados <- rbind(df_resultados, nueva_fila_resultados( "Stepwise_both", AIC(modelo_both), length(modelo_both$coefficients)-1))
+#modelo_both <- step(
+#  object = modelo_nulo,
+#  scope = list(lower = ~1, upper = modelo),
+#  direction = "both",
+#  trace = FALSE
+#)
 
 ```
 
@@ -186,7 +196,7 @@ df_resultados <- rbind(df_resultados, nueva_fila_resultados( "Stepwise_both", AI
 #Parametros:
 # modelo: modelo de regresion a evaluar 
 
-Rugalarizacion_Lasso <- function(modelo){
+Rugalarizacion_Lasso <- function(modelo, link = "logit"){
     formula <- as.formula(paste("diabetes ~", modelo ))
     x <- model.matrix(formula , data = PimaIndiansDiabetes)[, -1] #Quitando el intercepto 
     y <- PimaIndiansDiabetes$diabetes  #Variables binarias de si el paciente tiene o no diabetes
@@ -195,7 +205,7 @@ Rugalarizacion_Lasso <- function(modelo){
     modelo_lasso <- glmnet(
     x = x,
     y = y,
-    family = "binomial",  
+    family = binomial(link = link),  
     alpha = 1,          
     standardize = TRUE,
     nlambda = 100
@@ -207,13 +217,40 @@ Rugalarizacion_Lasso <- function(modelo){
               y      = y,
               alpha  = 1,
               nfolds = 10,
-              family = "binomial",  
+              family = binomial(link = link),  
               type.measure = "deviance",
               standardize  = TRUE
            )
+  
+  modelOut <- glmnet(
+            x           = x,
+            y           = y,
+            family = binomial(link = link),  
+            alpha       = 1,
+            lambda      = cv_error$lambda.1se,
+            standardize = TRUE
+  )
+  
+ df_coeficientes <- coef(modelOut) %>%
+                   as.matrix() %>%
+                   as_tibble(rownames = "predictor") %>%
+                   rename(coeficiente = s0)
+                   
+ out <- df_coeficientes %>%
+      filter(
+        predictor != "(Intercept)",
+        coeficiente != 0
+      ) 
+  
+ 
+    
+  
+  
+  
   salida <- list(
     modelo_lasso = modelo_lasso,
-    cv_error = cv_error
+    cv_error = cv_error, 
+    coefs = out
   )
   return(salida)
 }
@@ -222,7 +259,8 @@ Rugalarizacion_Lasso <- function(modelo){
 #Parametros:
 # modelo: model, tenemos que pasar la salida de model_lasso, para que funcione y se calcule de la funcion Regularizacion_lasso
 
-graficacion_lasso <- function(model_lasso){
+graficacion_lasso <- function(param){
+  model_lasso = param$modelo_lasso
   regularizacion <- model_lasso$beta %>% 
                   as.matrix() %>%
                   t() %>% 
@@ -282,35 +320,34 @@ AIC_lasso <- function(modelo, cv_error){
 
 
 ```{r}
-simple <- Rugalarizacion_Lasso(" . ")
-graficacion_lasso(simple$modelo_lasso )
+simple <- Rugalarizacion_Lasso(" . ", "probit")
+graficacion_lasso(simple )
 
-print(AIC_lasso(" . ", simple$cv_error))
+
+
+print(simple$coefs)
+
+print(length(simple$coefs$predictor)) 
+
+#print(AIC_lasso(" . ", simple$cv_error))
+
+df_resultados <- nueva_fila_resultados("Lasso", 0, length(simple$coefs$predictor))
+
 ```
-
-
-
-
-
-```{r}
-
- df_resultados <- rbind(df_resultados, nueva_fila_resultados( "Lasso", AIC_lasso, 7))
 
  
-```
+
+
+
 
 
 
 ```{r}
+
 head(PimaIndiansDiabetes)
 ```
 
 
-```{r}
-
-
-
-```
 
 
 
@@ -325,39 +362,6 @@ modeloInteracciones <- glm(diabetes ~ (.)^2 + I(pregnant^2)+ I(glucose^2) +I(pre
 
 
 
-```{r}
-modelo_conpleto_step <- step(
-  object = modeloInteracciones,
-  direction = "backward",
-  scope = list(upper = modeloInteracciones, lower = ~1),
-  trace = FALSE
-)
-
-df_resultados <- rbind(df_resultados, nueva_fila_resultados( "Stepwise_Backward Interacciones", AIC(modelo_conpleto_step), length(modelo_conpleto_step$coefficients)-1))
-```
-
-
-
-
-
-```{r}
-
-x <- model.matrix(diabetes ~ . , data = PimaIndiansDiabetes)[, -1] #Quitando el intercepto 
-y <- PimaIndiansDiabetes$diabetes  #Variables binarias de si el paciente tiene o no diabetes
-
-
-#Ahora toca elegir el mejor lambda, para eso utilizaremos la validacion cruzada
-cv_error <- cv.glmnet(
-              x      = x,
-              y      = y,
-              alpha  = 1,
-              nfolds = 10,
-              family = "binomial",  
-              type.measure = "deviance",
-              standardize  = TRUE
-           )
-
-```
 
 
 
@@ -365,14 +369,7 @@ cv_error <- cv.glmnet(
 
 
 
-```{r}
-pruebas12 <- list(
-  a = "aa",
-  b = "bb"
-)
 
-pruebas12$a
-```
 
 
 
