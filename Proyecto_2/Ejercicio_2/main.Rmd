@@ -1,8 +1,14 @@
 ---
 author: "Fernando Alvarado"
 date: "2025-03-12"
-output: html_document
+output:
+  html_document:
+    fig_width: 22
+    fig_height: 5
+    keep_md: true
+    df_print: paged
 ---
+
 
 
 ```{r setup, include=FALSE}
@@ -50,8 +56,17 @@ library(glmnet)
 library(stats )
 library(bestglm) # Paquete para buscar el mejor subset de un glm 
 library(scales)
+
 ```
 
+
+
+# Tener o no tener diabetes
+
+En este estudio se trabajó con distintas variables para modelar si un paciente tenía o no diabetes. En concreto, las ocho variables consideradas fueron: `pregnant`, `glucose`, `pressure`, `triceps`, `insulin`, `mass`, `pedigree` y `age`.  
+Mediante un modelo lineal generalizado (GLM) con familia binomial, se intentó modelar esta probabilidad, y el resultado se almacenó en la variable `diabetes`.
+
+El objetivo de este análisis es determinar qué variables son las más relevantes para predecir la diabetes, utilizando diferentes métodos de selección de variables y comparando sus resultados.
 
 
 ```{r Reultados_Datos}
@@ -59,8 +74,6 @@ library(scales)
 # Cargar el dataset
 data("PimaIndiansDiabetes")
 
-# Ver las primeras filas
-head(PimaIndiansDiabetes)
 
 df_resultados <- data.frame(
   Metodo = character(),
@@ -92,7 +105,7 @@ nueva_fila_resultados <- function( metodo, AIC, numero_bettas, vars) {
 
 
 
-```{r}
+```{r Trasf_ln}
 ln_diabetes <- data.frame(
       pregnant = log(PimaIndiansDiabetes$pregnant +1),
       glucose = log(PimaIndiansDiabetes$glucose +1),
@@ -109,7 +122,27 @@ ln_diabetes <- data.frame(
 ```
 
 
+## Modelos
 
+Para la modelación de la diabetes se emplearon los siguientes modelos:
+
+Modelo completo:
+
+$$
+\begin{aligned}
+\text{logit}(\mathbb{P}(\text{diabetes} = 1)) = \beta_0 + \beta_1 \cdot \text{pregnant} + \beta_2 \cdot \text{glucose} + \beta_3 \cdot \text{pressure} \\ + \beta_4 \cdot \text{triceps} + \beta_5 \cdot \text{insulin}  + \beta_6 \cdot \text{mass} + \beta_7 \cdot \text{pedigree} + \beta_8 \cdot \text{age}
+\end{aligned}
+$$
+
+
+Modelo con términos cuadráticos e interacciones: (Forma resumida, para no poner todas interacciones )
+
+$$
+\begin{aligned}
+\text{logit}(\mathbb{P}(\text{diabetes} = 1)) &= \beta_0 + \sum_{i < j} \beta_{ij} \cdot X_i X_j + \beta_1 \cdot \text{pregnant}^2 + \beta_2 \cdot \text{glucose}^2 + \beta_3 \cdot \text{pressure}^2 + \beta_4 \cdot \text{triceps}^2 + \beta_5 \cdot \text{insulin}^2 \\
+& + \beta_6 \cdot \text{mass}^2 + \beta_7 \cdot \text{pedigree}^2 + \beta_8 \cdot \text{age}^2
+\end{aligned}
+$$
 ```{r Modelos}
 #Modelo logit
 modelo <- glm(diabetes ~ ., family = binomial(link = "logit"), data = PimaIndiansDiabetes)
@@ -118,21 +151,34 @@ modelo2 <- " (.)^2 + I(pregnant^2)+ I(glucose^2) +I(pressure^2)+I(triceps^2)+I(i
 # Ver resumen
 
 ```
-```{r}
-library(tibble)
-df_coeficientes <- modelo$coefficients %>%
-                   enframe(name = "predictor", value = "coeficiente")
 
-df_coeficientes %>%
- filter(predictor != "(Intercept)") %>%
- ggplot() +
-  aes(x = predictor, y = coeficiente) +
-  geom_col(fill = "#0C4C8A") +
-  theme_minimal()
+
+
+
+
+
+```{r}
+#library(tibble)
+#df_coeficientes <- modelo$coefficients %>%
+#                   enframe(name = "predictor", value = "coeficiente")
+
+#df_coeficientes %>%
+# filter(predictor != "(Intercept)") %>%
+# ggplot() +
+#  aes(x = predictor, y = coeficiente) +
+#  geom_col(fill = "#0C4C8A") +
+#  theme_minimal()
 
 ```
 
-Grafica donde podemos observar los coefieicnetes de nuestro modelo, agregando todas las variables.
+
+## Métodos de selección de variables
+
+Para la selección de variables se utilizaron distintos métodos, tales como: **Best Subset Selection**, **Stepwise Backward Selection** y **Lasso**.  
+Estos métodos fueron programados como funciones en los siguientes chunks: `mejor_Subset`, `Stepwise` y `Funcion_lasso`, respectivamente.  
+Esto permitió generalizar el modelo y facilitar su uso con distintos tipos de regresión, así como con diversas funciones de enlace, tales como `logit`, `probit` y `cloglog`.
+
+
 
 
 ```{r Mejor_subset}
@@ -154,8 +200,6 @@ mejor_Subset <- function(link = "logit", data = PimaIndiansDiabetes){
 }
 
 ```
-
-
 
 
 
@@ -323,150 +367,224 @@ joinData <- function(lista){
 ```
 
 
+### Abreviaciones para entender los resultados
 
+**BS**: *Best Subset*  
+**SW_B**: *Stepwise Backward*  
+**L**: *Lasso*  
+**Ln**: Transformación de los datos a logaritmo natural  
+**m2**: Modelo 2 (Interacciones y variables elevadas al cuadrado)
 
-
-
-! limpiar los comentarios 
+Los resulados de los modelos fueron procesados en el chunk `Procesar_resultados`, donde se generaron los modelos y se almacenaron los resultados en un dataframe.
 
 ```{r Procesar_resultados}
 
-# Pregunta A
+# Pregunta A-----------------------------------------------------------------------------------------------------------------------------------------------------------------
 besSubset <- mejor_Subset(link = "logit")
-df_resultados <-nueva_fila_resultados( "Mejor Subset logit", besSubset$BestModel$aic, length(besSubset$BestModel$coefficients)-1, names())
+df_resultados <-nueva_fila_resultados( "BS logit", besSubset$BestModel$aic, length(besSubset$BestModel$coefficients)-1, joinData(names(besSubset$BestModel$coefficients)))
 
 
 modeloInteracciones <- StepwiseBack(" . ", "logit") # Modelo simple Stepwise
-df_resultados <- nueva_fila_resultados("Stepwise_Backward logit", AIC(modeloInteracciones), length(modeloInteracciones$coefficients)-1, names())
+df_resultados <- nueva_fila_resultados("SW_B logit", AIC(modeloInteracciones), length(modeloInteracciones$coefficients)-1, joinData(names(modeloInteracciones$coefficients)))
 
 
 simple <- Rugalarizacion_Lasso(" . ", "logit")   #Ejecutando nuestro primer modelo lasso
-df_resultados <- nueva_fila_resultados("Lasso logit", AIC_lasso(simple, "logit")$AIC, length(simple$coefs$predictor), names())
+df_resultados <- nueva_fila_resultados("L logit", AIC_lasso(simple, "logit")$AIC, length(simple$coefs$predictor), joinData(simple$coefs$predictor)) 
 
 
-# Pregunta B
+# Pregunta B-----------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 StepB <- StepwiseBack(modelo2, link = "logit") # Modelo cuadratico Stepwise
-df_resultados <- nueva_fila_resultados("Stepwise_Backward_Cuadratico logit", AIC(StepB), length(StepB$coefficients)-1, names())
+df_resultados <- nueva_fila_resultados("SW_B m2 logit", AIC(StepB), length(StepB$coefficients)-1, joinData(names(StepB$coefficients )))
 
 
 lassoB <- Rugalarizacion_Lasso(modelo2, link = "logit")   #Ejecutando nuestro primer modelo lasso
-df_resultados <- nueva_fila_resultados("Lasso_Cuadratico logit", AIC_lasso(lassoB, "logit")$AIC, length(lassoB$coefs$predictor), names())
+df_resultados <- nueva_fila_resultados("L m2 logit", AIC_lasso(lassoB, "logit")$AIC, length(lassoB$coefs$predictor), joinData(lassoB$coefs$predictor ))
 
-# Pregunta C
+# Pregunta C-----------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 #Usando liga probit
 
-# Pregunta  ----A----
 besSubsetProbit <- mejor_Subset(link = "probit")
-df_resultados <-nueva_fila_resultados( "Mejor Subset probit", besSubsetProbit$BestModel$aic, length(besSubsetProbit$BestModel$coefficients)-1, names(besSubsetProbit$BestModel$coefficients))
+df_resultados <-nueva_fila_resultados( "BS probit", besSubsetProbit$BestModel$aic, length(besSubsetProbit$BestModel$coefficients)-1, joinData(names(besSubsetProbit$BestModel$coefficients)))
 
 
 modeloInteraccionesProbit <- StepwiseBack(" . ", "probit") # Modelo simple Stepwise
-df_resultados <- nueva_fila_resultados("Stepwise_Backward probit", AIC(modeloInteraccionesProbit), length(modeloInteraccionesProbit$coefficients)-1, names(modeloInteraccionesProbit$coefficients))
+df_resultados <- nueva_fila_resultados("SW_B probit", AIC(modeloInteraccionesProbit), length(modeloInteraccionesProbit$coefficients)-1, joinData(names(modeloInteraccionesProbit$coefficients)))
 
 
 simpleProbit <- Rugalarizacion_Lasso(" . ", "probit")   #Ejecutando nuestro primer modelo lasso
-df_resultados <- nueva_fila_resultados("Lasso probit", AIC_lasso(simpleProbit, "probit")$AIC, length(simpleProbit$coefs$predictor)-1, names(simpleProbit$coefs$predictor))
+df_resultados <- nueva_fila_resultados("L probit", AIC_lasso(simpleProbit, "probit")$AIC, length(simpleProbit$coefs$predictor)-1, joinData(simpleProbit$coefs$predictor))
 
-
-# Pregunta  ----B----
 
 StepBprobit <- StepwiseBack(modelo2, link = "probit") # Modelo cuadratico Stepwise
-df_resultados <- nueva_fila_resultados("Stepwise_Backward_Cuadratico probit", AIC(StepBprobit), length(StepBprobit$coefficients)-1, names(StepBprobit$coefficients))
+df_resultados <- nueva_fila_resultados("SW_B m2 probit", AIC(StepBprobit), length(StepBprobit$coefficients)-1, joinData(names(StepBprobit$coefficients)))
 
 
 lassoBprobit <- Rugalarizacion_Lasso(modelo2, link = "probit")   #Ejecutando nuestro primer modelo lasso
-df_resultados <- nueva_fila_resultados("Lasso_Cuadratico probit", AIC_lasso(lassoBprobit, "probit")$AIC, length(lassoBprobit$coefs$predictor)-1, names(lassoBprobit$coefs$predictor))
+df_resultados <- nueva_fila_resultados("L m2 probit", AIC_lasso(lassoBprobit, "probit")$AIC, length(lassoBprobit$coefs$predictor)-1, joinData(lassoBprobit$coefs$predictor))
 
 
 
 #Usando liga cloglog
 
-# Pregunta  ----A----
+
 besSubsetcloglog <- mejor_Subset(link = "cloglog")
-df_resultados <-nueva_fila_resultados( "Mejor Subset cloglog", besSubsetcloglog$BestModel$aic, length(besSubsetcloglog$BestModel$coefficients)-1, names(besSubsetcloglog$BestModel$coefficients))
+df_resultados <-nueva_fila_resultados( "BS cloglog", besSubsetcloglog$BestModel$aic, length(besSubsetcloglog$BestModel$coefficients)-1, joinData(names(besSubsetcloglog$BestModel$coefficients)))
 
 
 modeloInteraccionescloglog <- StepwiseBack(" . ", "cloglog") # Modelo simple Stepwise
-df_resultados <- nueva_fila_resultados("Stepwise_Backward cloglog", AIC(modeloInteraccionescloglog), length(modeloInteraccionescloglog$coefficients)-1, names(modeloInteraccionescloglog$coefficients))
+df_resultados <- nueva_fila_resultados("SW_B cloglog", AIC(modeloInteraccionescloglog), length(modeloInteraccionescloglog$coefficients)-1, joinData(names(modeloInteraccionescloglog$coefficients)))
 
 
 simplecloglog <- Rugalarizacion_Lasso(" . ", "cloglog")   #Ejecutando nuestro primer modelo lasso
-df_resultados <- nueva_fila_resultados("Lasso cloglog", AIC_lasso(simplecloglog, "cloglog")$AIC, length(simplecloglog$coefs$predictor)-1, names(simplecloglog$coefs$predictor))
+df_resultados <- nueva_fila_resultados("L cloglog", AIC_lasso(simplecloglog, "cloglog")$AIC, length(simplecloglog$coefs$predictor)-1, joinData(simplecloglog$coefs$predictor))
 
-
-# Pregunta  ----B----
 
 StepBcloglog <- StepwiseBack(modelo2, link = "cloglog") # Modelo cuadratico Stepwise
-df_resultados <- nueva_fila_resultados("Stepwise_Backward_Cuadratico cloglog", AIC(StepBcloglog), length(StepBcloglog$coefficients)-1, names(StepBcloglog$coefficients))
+df_resultados <- nueva_fila_resultados("SW_B m2 cloglog", AIC(StepBcloglog), length(StepBcloglog$coefficients)-1, joinData(names(StepBcloglog$coefficients)))
 
 
 lassoBcloglog <- Rugalarizacion_Lasso(modelo2, link = "cloglog")   #Ejecutando nuestro primer modelo lasso
-df_resultados <- nueva_fila_resultados("Lasso_Cuadratico cloglog", AIC_lasso(lassoBcloglog, "cloglog")$AIC, length(lassoBcloglog$coefs$predictor)-1, names(lassoBcloglog$coefs$predictor))
+df_resultados <- nueva_fila_resultados("L m2 cloglog", AIC_lasso(lassoBcloglog, "cloglog")$AIC, length(lassoBcloglog$coefs$predictor)-1, joinData(lassoBcloglog$coefs$predictor))
 
-# cambio de datos
+# Tranformando  variables
+
+besSubsetc <- mejor_Subset(link = "logit", ln_diabetes)
+df_resultados <-nueva_fila_resultados( "BS ln logit", besSubsetc$BestModel$aic, length(besSubsetc$BestModel$coefficients)-1, joinData(names(besSubsetc$BestModel$coefficients)))
+
+
+modeloInteraccionesc <- StepwiseBack(" . ", "logit", ln_diabetes) # Modelo simple Stepwise
+df_resultados <- nueva_fila_resultados("SW_B ln logit", AIC(modeloInteraccionesc), length(modeloInteraccionesc$coefficients)-1, joinData(names(modeloInteraccionesc$coefficients)))
+
+
+simplec <- Rugalarizacion_Lasso(" . ", "logit", ln_diabetes)   #Ejecutando nuestro primer modelo lasso
+df_resultados <- nueva_fila_resultados("L ln logit", AIC_lasso(simplec, "logit")$AIC, length(simplec$coefs$predictor), joinData(simplec$coefs$predictor))
+
+
+StepBc <- StepwiseBack(modelo2, link = "logit", ln_diabetes) # Modelo cuadratico Stepwise
+df_resultados <- nueva_fila_resultados("SW_B m2 ln logit", AIC(StepBc), length(StepBc$coefficients)-1, joinData(names(StepBc$coefficients)))
+
+
+lassoBc <- Rugalarizacion_Lasso(modelo2, link = "logit", ln_diabetes)   #Ejecutando nuestro primer modelo lasso
+df_resultados <- nueva_fila_resultados("L m2 ln logit", AIC_lasso(lassoBc, "logit")$AIC, length(lassoBc$coefs$predictor)  , joinData(lassoBc$coefs$predictor))
+
+```
+
+## Presentación de resultados
+
+En esta sección se muestran los resultados obtenidos tras aplicar los diferentes modelos y métodos de selección de variables.  
+La tabla incluye el método utilizado (en abreviatura), el valor de AIC obtenido y el número de betas (coeficientes) incluidos en el modelo.
+
+
+
+```{r, Resultados}
+resultados <- df_resultados %>%
+      dplyr::select(Metodo, AIC, numero_bettas)
+
+
+knitr::kable(resultados, caption = "Tabla de resultados")
+```
+
+
+En esta tabla se presentan diversas combinaciones de modelos, funciones de enlace y transformaciones de variables.  
+Se observa que un menor número de variables no siempre implica un menor AIC ni un mejor modelo.
+
+En este caso, el mejor modelo fue aquel con función de enlace **logit**, transformación de variables mediante **logaritmo natural**, basado en el modelo **m2** y utilizando el método **Stepwise Backward**. Este modelo obtuvo un AIC de **691.56** y seleccionó un total de **19** variables.
+
+En comparación, el modelo más simple utilizó la función de enlace **cloglog** y el método **Lasso**, seleccionando únicamente **2** variables y obteniendo un AIC de **758.58**.
+
+Esto demuestra que fue necesario aplicar transformaciones a los datos y agregar interacciones para que los métodos de selección contaran con un mayor número de variables que permitieran mejorar el **AIC**.
+
+
+
+
+En estas gráficas se muestran, de forma visual, los valores de **AIC** obtenidos por los distintos modelos. 
+
+```{r, fig.width=20, fig.height=10}
+library(patchwork)
+
+ ggplot(resultados) +
+  aes(x = Metodo, y = AIC, fill = numero_bettas) +
+  geom_col() +
+  scale_fill_gradient(low = "#1687B2", high = "#0C2874") +
+  labs(title = "Modelos vs AIC") +
+  coord_flip() +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 10L),
+    axis.text.x = element_text(size = 9L,
+    angle = 45L)
+  )
+
+
+#esquisser(resultados)
+```
+
+En esta gráfica el color representa la cantidad de variables utilizadas en cada modelo, lo que permite observar que aquellos modelos con mayor número de variables tienden a presentar un **AIC** más bajo, en este caso especifico de datos.  
+En particular, se destaca que el método **Stepwise Backward** logra consistentemente valores de **AIC** más favorables.
+
+```{r, histograma, fig.width=27, fig.height=15}
+
+histomraw <- joinData(df_resultados$variables_select)
+
+dataHist <- unlist(strsplit(histomraw, ",\\s*"))
+dataHist_limpio <- gsub("^I\\((.*)\\)$", "\\1", dataHist) #Limpiar los nombres de las variables
+
+
+# Tabla de frecuencias
+tabla <- table(dataHist_limpio)
+
+# Convertir a data frame
+df_tabla <- as.data.frame(tabla)
+colnames(df_tabla) <- c("variable", "frecuencia")
+
+
+
+ ggplot(df_tabla, aes(x = reorder(variable, frecuencia), y = frecuencia)) +
+  geom_bar(stat = "identity", fill = "#0C4C8A") +
+  labs(title = "Comparativa de variables seleccionadas  ",
+       x = "Variables",
+       y = "Frecuencia") +
+  coord_flip() +
+  theme_minimal()
+
 
 ```
 
 
-
-```{r}
-# Pregunta A
-besSubset <- mejor_Subset(link = "logit", ln_diabetes)
-df_resultados <-nueva_fila_resultados( "Mejor Subset logit", besSubset$BestModel$aic, length(besSubset$BestModel$coefficients)-1, joinData(names(besSubset$BestModel$coefficients)))
+En esta segunda gráfica se visualizan las variables que fueron seleccionadas con mayor frecuencia a lo largo de los distintos modelos.  
+Las más destacadas fueron: **glucose**, **mass** y **age**.  
+Esto sugiere que la probabilidad de tener diabetes es mayor en pacientes con niveles elevados de glucosa, mayor peso corporal y mayor edad.
 
 
-modeloInteracciones <- StepwiseBack(" . ", "logit", ln_diabetes) # Modelo simple Stepwise
-df_resultados <- nueva_fila_resultados("Stepwise_Backward logit", AIC(modeloInteracciones), length(modeloInteracciones$coefficients)-1, joinData(names(modeloInteracciones$coefficients)))
+
+## Interpretación del modelo seleccionado
+
+```{r,  fig.width=25, fig.height=15}
+
+library(tibble)
+df_coeficientes <- StepBc$coefficients %>%
+                   enframe(name = "predictor", value = "coeficiente")
+
+df_coeficientes %>%
+ filter(predictor != "(Intercept)") %>%
+  ggplot() +
+    aes(x = predictor, y = coeficiente) +
+    geom_col(fill = "#0C4C8A") +
+    labs(title = "Coeficientes del modelo seleccionado") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45L))
 
 
-simple <- Rugalarizacion_Lasso(" . ", "logit", ln_diabetes)   #Ejecutando nuestro primer modelo lasso
-
-
-df_resultados <- nueva_fila_resultados("Lasso logit", AIC_lasso(simple, "logit")$AIC, length(simple$coefs$predictor), joinData(simple$coefs$predictor))
-
-
-# Pregunta B
-
-StepB <- StepwiseBack(modelo2, link = "logit", ln_diabetes) # Modelo cuadratico Stepwise
-df_resultados <- nueva_fila_resultados("Stepwise_Backward_Cuadratico logit", AIC(StepB), length(StepB$coefficients)-1, joinData(names(StepB$coefficients)))
-
-
-lassoB <- Rugalarizacion_Lasso(modelo2, link = "logit", ln_diabetes)   #Ejecutando nuestro primer modelo lasso
-df_resultados <- nueva_fila_resultados("Lasso_Cuadratico logit", AIC_lasso(lassoB, "logit")$AIC, length(lassoB$coefs$predictor)  , joinData(lassoB$coefs$predictor))
-```
-
-```{r}
-length(df_resultados$variables_select)
 
 
 ```
 
+En este modelo se observa que las variables con mayor magnitud en sus coeficientes —y, por tanto, mayor influencia— son: **age**, **pedigree** y **glucose**, todas con coeficientes negativos.
 
-```{r}
-names(besSubset$BestModel$coefficients)
-
-
-
-b <- joinData(names(StepB$coefficients))
-b
-```
-
-
-
-
-```{r}
-a = c()
-a <-   names(besSubset$BestModel$coefficients)
-
-a
-
-
-typeof(a)
-```
-
-
+Esto indica que a mayor edad, mayor nivel de glucosa y mayor número de antecedentes familiares de diabetes (representado por `pedigree`), existe una mayor probabilidad de desarrollar esta enfermedad.  
+Por lo tanto, la edad y la carga hereditaria son factores clave a considerar en el riesgo de diabetes, lo cual resalta la importancia de adoptar una buena alimentación y hábitos saludables como medida preventiva.
 
 
 
@@ -477,6 +595,9 @@ Selección de predictores: subset selection, ridge, lasso y reducción de dimens
 
 
 
+```{r}
+
+```
 
 
 
