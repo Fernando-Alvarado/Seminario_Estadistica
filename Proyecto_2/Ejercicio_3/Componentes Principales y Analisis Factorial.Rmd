@@ -1,0 +1,341 @@
+---
+title: "Componentes Principales y Análisis Factorial"
+#author: "Hernández Torres Jair"
+#date: "2025-05-15"
+
+output:
+  pdf_document:
+    latex_engine: xelatex
+
+
+
+
+
+
+---
+
+```{r setup, include=FALSE}
+#Empezamos limpiando nuestro ambiente
+rm(list = ls(all.names = TRUE))
+
+
+# Configuración global de los bloques de código (chunk's)
+knitr::opts_chunk$set(
+	echo = FALSE,
+	fig.align = "center",
+	fig.dim = c(5.0, 4.0),
+	fig.pos = "H",
+#Agregamos configuraciones para evitar mensajes de advertencias y de errores en el archivo
+	message = FALSE,
+	warning = FALSE,
+	error = F
+)
+
+#Extrayendo nuestra datas
+setwd("C:\\Users\\Jair HT\\Desktop\\SEMINARIO ESTADISTICA")
+
+Datos=read.csv("Dat3Ex.csv")
+
+library(dplyr)
+library(psych)
+library(factoextra)
+library(GGally)
+library(tidyverse)
+
+Datosfil<- dplyr::select(Datos,V1, V2, V3, V6, V9, V12, V14, V16, V17, V26, V27, V29, V31, V33, V37)
+
+summary(Datosfil)
+
+head(Datosfil)
+
+str(Datosfil)
+```
+
+En este análisis vamos a trabajar con datos de una encuesta que intenta estudiar la personalidad de un grupo de 228 alumnos de licenciatura de una universidad de Estados Unidos. La encuesta se responde en base a 5 posibles respuestas para cada enunciado a responder, las respuestas se clasifican de la siguiente manera:
+
+Fuertemente en desacuerdo   (1)
+Un poco desacuerdo          (2)
+Ni acuerdo ni en desacuerdo (3)
+Un poco deacuerdo           (4)
+Fuertemente deacuerdo       (5)
+
+En este análisis solo se va a trabajar con 15 enunciados, los cuales serán nuestras variables a estudiar y serán abreviadas de la siguiente manera:
+
+
+V1:  Es hablador.                           
+V2:  Tiende a crititicar a los demás.       
+V3:  Trabaja con esmero.                   
+V6:  Es reservado.                          
+V9:  Es relajado y maneja bien el estrés.   
+V12: Inicia discuciones con otros.         
+V14: Es una persona tensa.                 
+V16: Transmite entusiasmo.                 
+V17: Es una persona comprensiva.          
+V26: Tiene una personalidad asertiva.      
+V27: Es frio y distante.                   
+V29: Es temperamental/voluble.             
+V31: Es timido e inhibido.                    
+V33: Hace las cosas con eficiencia.        
+V37: Es grosero con los demas.      
+
+El objetivo de este análisis es lograr resumir de la mejor manera posible las 15 variables dadas para lograr una reducción de dimensionalidad, con el fin de trabajar con menos variables, a partir de nuevas variables que contengan información de la originales. Para ello vamos a explorar dos metodos diferentes: Componentes Principales y Análisis Factorial Exploratorio. A partir de estos diferentes metodos queremos encontrar cual resume mejor estas variables de tal forma que se conserve la mayor información posible, para ello vamos a buscar guardar la mayor variabilidad que los datos proporcionan basandonos principalmente en la varianza, por otro lado buscaremos que la cantidad de las nuevas variables sea mucho menor que la cantidad de las variables originales. Finalmente desarrollaremos un indice que nos explique el mejor resumen de los datos.
+
+
+## Reducción de dimensionalidad con variables continuas.
+La reducción de dimensionalidad la vamos a iniciar asumiendo que las variables son continuas, exploraremos dos configuraciones de los datos, en la primera tomaremos los datos originales sin aplicarle ningun tipo de escala o transformación, en la segunda configuración vamos aplicar una estandarización sobre los datos. 
+
+### Componentes Principales.
+Con componentes principales tenemos los siguientes resultados sin aplicar escala.
+
+
+
+```{r, fig.width=3, fig.height=2, out.width='50%', fig.align='center'}
+CP1=prcomp(Datosfil, scale = FALSE) #Matriz Covarianzas.
+
+
+fviz_pca_var(CP1, col.var = "contrib")
+```
+Tomando los datos sin escala, en esta primer gráfica podemos observar que tanto peso o asociacion existe entre las variables y los componentes principales 1 y 2. Podemos observar que las 5 principales variables que tienen mayor asociación con el componente principal 1, el cual es representado por el eje X, son: V37, V29, V27, V14 y V9.
+A su vez las principales variables que tienen un mayor peso en el componente principal 2 son: V1, V26, V31 y V6.
+
+```{r}
+# Obtener la importancia de los componentes
+tabla_importancia <- summary(CP1)$importance
+
+# Transponer para que las filas sean los componentes
+tabla_df <- as.data.frame(t(tabla_importancia))
+
+# Mostrar solo las primeras 8 filas
+knitr::kable(head(tabla_df, 8), digits = 2, caption = "Variabilidad de los Primeros 8 Componentes Principales")
+
+
+```
+
+En esta tabla se tiene que los primeros 8 componentes principales rescatan un 80% de la varianza total de los datos originales, sin embargo al estudiar las asociaciones entre los compnentes principales y las variables, resulta que tan solo 5 componentes principales tienen una asociación igual o mayor a 0.5, éstos componentes principales son los siguientes:
+
+```{r, include=FALSE}
+cor(CP1$x[,1:8],Datosfil)
+
+```
+
+CP1: V2, V9, V12, V14, V16, V27, V29, V37.
+
+CP2: V1, V6, V26, V31
+
+CP3: V9
+
+CP4: V3, V33
+
+CP6: V2
+
+Estos 5 componentes principales son aqullos que tienen una mayor asociación con las vairables estudiadas, sin embargo solo rescatan 66% de la variabilidad,  de igual manera, en este analisis solo estamós determinando que tan asociados estan los CP con las variables, ya que los datos no estan en ninguna escala y por tanto no existe alguna correlación explicita y por ende no se puede dar una interpetación.
+
+
+Por otro lado aplicando una estandarización con media 0 y varianza 1 a los datos, tenemos el siguiente resultado.
+
+```{r, include=FALSE}
+CP2=prcomp(Datosfil, scale = TRUE) #Matriz Correlaciones..
+fviz_pca_var(CP2, col.var = "contrib")
+
+
+```
+```{r}
+
+pca_summary <- summary(CP2)
+importancia <- as.data.frame(pca_summary$importance)
+
+# Redondear los valores para mejor presentación
+importancia <- round(importancia, 3)
+
+# Transponer para que las PC estén como filas (más intuitivo visualmente)
+importancia_t <- t(importancia)
+
+# Mostrar solo las primeras 9 filas
+knitr::kable(head(importancia_t, 9), caption = "Variailidad de los Primeras 9 Componentes Principales con estandarización")
+```
+
+En este caso, como los datos están estandarizados, lo que tenemos son correlaciones entre las variables y los componentes principales, notemos que necesitamos 9 CP para recoger el 80% de variabilidad, sin embargo al rescatar unicamente aquellas correlaciones mayores o iguales a 0.5, obtenemos los siguientes componentes principales:
+
+```{r, include=FALSE}
+cor(CP2$x[,1:9],Datosfil)
+```
+
+
+CP1: V2, V9, V12, V14, V16, V27, V29, V37
+
+CP2: V1, V26, V31
+
+CP3: V9
+
+CP4: V3, V33
+
+CP5: V17
+
+Con estos 5 CP obtenemos un 66% del total de la variabilidad de los datos, igual que sin estandarizar.
+
+
+### Análisis Factorial Exploratorio.
+
+```{r, fig.width=3, fig.height=2, out.width='40%', fig.align='center'}
+cov1 <- cov(Datosfil)  #Matriz de covarianzas
+EfaNoescala <-fa(r = cov1, nfactors = 5, covar = TRUE)
+
+fa.diagram(EfaNoescala, cut=.5) 
+
+```
+Al aplicar analisis factorial exploratorio con los datos sin escala ni transformados, utilizando 5 factores para mantener una cantidad igual a la que se usó en los CP, podemos ver que no son suficientes factores pues las variables V2, V17, V6, V26 y V3 no tienen ninguna asociación mayor que 0.5 con ningun factor, por tanto necesitaríamos más factores lo que podria complicar la interpretación. En este caso se rescata un maximo de 53% de la variabilidad total de los datos.
+```{r, include=FALSE}
+print(EfaNoescala, cut = .5, digits=2, sort=TRUE)
+```
+
+Ahora, aplicando una estandarizacion con media 0 y varianza 1, resultan los siguientes factores.
+```{r, include=FALSE}
+Efa1 <- fa(Datosfil,nfactors=5) 
+Efa1
+Efa1$communalities 
+Efa1$complexity
+
+```
+```{r, fig.width=3, fig.height=2, out.width='40%', fig.align='center'}
+fa.diagram(Efa1, cut=.5)
+```
+```{r, include=FALSE}
+print(Efa1, cut = .5, digits=2, sort=TRUE)
+```
+Nuevamente hay variables que en este caso estandarizado, no tienen correlación mayor que 0.5 con los factores como V2, V17, V3 y V6, tenemos el mismo problema que en los factores anteriores. Aqui se guarda una variabilidad máxima de 53% igual que en el caso anterior
+
+## Reducción de dimensionalidad con variables categóricas ordinales.
+
+```{r, include=FALSE}
+
+columnas_ordinales <- c("V1", "V2", "V3", "V6", "V9", "V12", "V14", "V16", "V17", "V26","V27","V29","V31","V33","V37")  
+Datosfil[columnas_ordinales] <- lapply(Datosfil[columnas_ordinales], function(x) factor(x, ordered = TRUE, levels = c(1, 2, 3, 4, 5)))
+
+# Verificar la conversión
+str(Datosfil)
+
+```
+```{r,include=FALSE}
+
+MatrizPolic <- polychoric(Datosfil)
+
+# Guardamos los nombres originales
+nombres_originales <- colnames(Datosfil)
+
+# Asignamos esos nombres a la matriz de correlaciones
+colnames(MatrizPolic$rho) <- nombres_originales
+rownames(MatrizPolic$rho) <- nombres_originales
+print(MatrizPolic$rho)
+
+```
+Ahora vamos a explorar reducción de dimensionalidad tomando las variables como datos categóricos ordinales, en resumen, lo que se hizo en esta sección fue estandarizar los datos, extraer una cantidad de 5 componentes principales y de 5 factores, a su vez se realizaron diversas rotaciones a los componentes principales tales como: varimax, quartimax y equamax. Mientras que a los factores se les aplicó las siguientes rotaciones: oblimin, simplimax y promax. Sin embargo tanto en componentes principales como en factores se obtuvo que sin usar rotaciones que dan mejores correlaciones entre los CP/Factores y las variables lo cual ayuda a su interpretación. 
+
+
+```{r, include=FALSE}
+#Componentes Principales
+PCORDINAL3 <- principal(r = MatrizPolic$rho, nfactors = 5, rotate="none")
+print(PCORDINAL3)
+fa.diagram(PCORDINAL3, cut=.5)
+
+PCORDINAL4 <- principal(r = MatrizPolic$rho, nfactors = 5, rotate="varimax")
+print(PCORDINAL4)
+fa.diagram(PCORDINAL4, cut=.5)
+
+PCORDINAL5 <- principal(r = MatrizPolic$rho, nfactors = 5, rotate="quartimax")
+print(PCORDINAL5)
+fa.diagram(PCORDINAL5, cut=.5)
+
+PCORDINAL6 <- principal(r = MatrizPolic$rho, nfactors = 5, rotate="equamax")
+print(PCORDINAL6)
+fa.diagram(PCORDINAL6, cut=.5)
+
+
+
+```
+```{r, include=FALSE}
+#Analisis factorial
+EfaORDINALES4 <- fa(r = MatrizPolic$rho,nfactors=5, fm = "wls", rotate = "none")  
+EfaORDINALES4
+fa.diagram(EfaORDINALES4, cut=.5)
+
+
+EfaORDINALES4 <- fa(r = MatrizPolic$rho,nfactors=5, fm = "wls", rotate = "oblimin")  
+EfaORDINALES4
+fa.diagram(EfaORDINALES4, cut=.5)
+
+
+EfaORDINALES4 <- fa(r = MatrizPolic$rho,nfactors=5, fm = "wls", rotate = "simplimax")  
+EfaORDINALES4
+fa.diagram(EfaORDINALES4, cut=.5)
+
+
+EfaORDINALES4 <- fa(r = MatrizPolic$rho,nfactors=5, fm = "wls", rotate = "promax")  
+EfaORDINALES4
+fa.diagram(EfaORDINALES4, cut=.5)
+```
+
+```{r,fig.width=3, fig.height=2, out.width='40%', fig.align='center'}
+
+
+fa.diagram(PCORDINAL3, cut=.5)
+fa.diagram(EfaORDINALES4, cut=.5)
+
+```
+```{r, include=FALSE}
+print(PCORDINAL3)
+print(EfaORDINALES4)
+```
+
+Estas gráficas corresponden a CP y Factores respectivamente sin rotaciones, se puede decir que en ambos casos existen buenas correlaciones entre las variables y los CP/Factores, sin embargo debemos mencionar que los factores aqui rescatan una variabilidad máxima de 59% del total de los datos, mientras que los CP recuperan una variabilidad máxima de 71% del total, en otras palabras, cuando trabajamos con los datos categóricos ordinales y utilizamos componentes principales sin rotaciones, recuperamos la máxima información de los datos originales en base a su variabilidad, ya que hasta el momento el 71% de variabilidad ha sido lo más alto que hemos recuperado, que fue de hecho uno de los principales ojetivos que se mencionaron al principio de este trabajo, tratar de que las nuevas variables contengan la mayor información posible de las variables originales, mientras que el otro objetivo del análisis era reducir lo más posible la cantidad de las nuevas variables, en este caso pasamos de 15 variables originales a 5 componentes principales, es decir se logró realizar una buena reduccion de dimensionalidad. Por tanto nos quedaremos con estos 5 componentes principales para elaborar nuestro indice. Finalmente vamos a explicar cómo se interpretan estos componentes principales. 
+
+
+El componente principal 1, nos explica lo siguiente:
+A mayor valor en el CP1 tenemos que el perfil de personalidad de un estudiante es el de alguien con las siguientes tendencias: La tendencia a ser frio y distante, a ser grosero con los demás, a iniciar discuciones, a ser voluble, a ser tenso, a criticar a los demás aumenta, mientras que la tendencia a transmitir entuasiasmo disminuye. Es decir, CP1 nos resume características negativas de la personalidad de los estudiantes.
+
+
+El componente principal 2, nos explica lo siguiente:
+A mayor valor en el CP2 tenemos que el perfil de personalidad de un estudiante es el de alguien con las siguientes tendencias: La tendencia a ser hablador, y a ser asertivo aumenta, mientras que la tendencia a ser reservado y timido disminuye. En otras palabras el CP2 nos resume características de la personalidad relacionadas a habilidades sociales en los estudiantes.
+
+
+El componente principal 3, nos explica lo siguiente:
+A mayor valor en el CP3 tenemos que el perfil de personalidad de un estudiante es el de alguien con las siguientes tendencias: La tendencia a ser relajado y/o manejar el estre aumenta.
+
+El componente principal 4, nos explica lo siguiente:
+A mayor valor en el CP4 la tendencia a ser eficiente y con esmero aumenta, así pues, este CP4 nos resume características relacionadas con una buena práctica acádemica.
+
+Finalmente el CP5 nos explica que a mayor valor de éste, la tendencia a ser comprensivo aumenta, es decir, nos resumen caracterísitcas relacionada a la empatía.
+
+## Conclusión.
+
+Como podemos notar, estos 5 CP forman un indice adecuado, pues realmente cumplió su objetivo de reducción de dimensionalidad por un lado, a su vez que rescató la mayor información posible, más aún, tiene una manera adecuada de resumir e interpretar a las variables originales, pues el resumen que ofrecen estos CP es contundente, claro y conciso respecto a las diferentes características de las personalidad de los estudiantes, ya que las diferentes características se agrupan adecuadamente a cada componente principal, consiguiendo un buen resumen.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
