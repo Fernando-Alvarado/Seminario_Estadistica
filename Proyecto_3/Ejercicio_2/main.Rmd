@@ -1,0 +1,286 @@
+---
+title: "main.Rmd"
+author: "Fernando Alvarado"
+date: "2025-05-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+#Ruta de los datos en caso de que requiera
+
+#Cargamos nuestras librerías 
+library(ggplot2)
+library(dplyr)
+
+library(esquisse)
+library(tidymodels)
+library(tidyverse)
+library(skimr)
+library(DataExplorer)
+library(ggpubr)
+library(univariateML)
+library(GGally)
+library(doParallel)
+library(yardstick)
+
+
+# Orden de las grafica 
+library(patchwork)
+```
+
+
+## Análisis de la presencia de enfermedad
+
+Se proporcionaron datos de un estudio médico realizado a varios pacientes, quienes presentan distintas condiciones clínicas y resultados de estudios complementarios. Entre las variables disponibles, se incluye una variable dicotómica denominada `Y`, que indica si el paciente presenta o no una determinada enfermedad.
+
+Para este análisis, se interpreta de la siguiente manera:
+
+- `Y = 1`: Presencia de la enfermedad  
+- `Y = 0`: Ausencia de la enfermedad
+
+Las variables `V1`, `V2`, `V3` y `V4` son **categóricas**, mientras que las variables `V5` a `V10` son **numéricas continuas**. El objetivo principal es explorar la relación entre estas variables y la presencia de la enfermedad, con el fin de identificar posibles patrones o asociaciones relevantes para el diagnóstico o tratamiento.
+
+
+```{r Data}
+
+data <- read.csv("C:/Users/ferna/Documents/Seminario_Estadistica/Proyecto_3/Ejercicio_2/Data/DatosTrain_Tarea3.csv")
+data
+
+
+
+```
+
+```{r Pre_procesamiento}
+data <- data %>%
+  mutate(
+    V1 = as.factor(V1),
+    V2 = as.factor(V2),
+    V3 = as.factor(V3),
+    V4 = as.factor(V4), 
+    Y = as.factor(Y)
+  )
+```
+
+
+```{r}
+V1 <- ggplot(data) +
+  aes(x = V1, fill = factor(Y)) +
+  geom_bar(position = "fill") +
+  scale_fill_manual(
+    values = c(`0` = "#095F7E", `1` = "#AF261D")
+  ) +
+  labs(
+    x = "Presencia de enfermedad",
+    y = "Proporción",
+    title = "Proporción de Y según Variable V1"
+  ) +
+  theme_minimal()
+
+V2 <- ggplot(data) +
+  aes(x = V2, fill = factor(Y)) +
+  geom_bar(position = "fill") +
+  scale_fill_manual(
+    values = c(`0` = "#095F7E", `1` = "#AF261D")
+  ) +
+  labs(
+    x = "Presencia de enfermedad",
+    y = "Proporción",
+    title = "Proporción de Y según Variable V2"
+  ) +
+  theme_minimal()
+
+V3 <- ggplot(data) +
+  aes(x = V3, fill = factor(Y)) +
+  geom_bar(position = "fill") +
+  scale_fill_manual(
+    values = c(`0` = "#095F7E", `1` = "#AF261D")
+  ) +
+  labs(
+    x = "Presencia de enfermedad",
+    y = "Proporción",
+    title = "Proporción de Y según Variable V3"
+  ) +
+  theme_minimal()
+
+V4 <- ggplot(data) +
+  aes(x = V4, fill = factor(Y)) +
+  geom_bar(position = "fill") +
+  scale_fill_manual(
+    values = c(`0` = "#095F7E", `1` = "#AF261D")
+  ) +
+  labs(
+    x = "Presencia de enfermedad",
+    y = "Proporción",
+    title = "Proporción de Y según Variable V4"
+  ) +
+  theme_minimal()
+
+
+```
+
+## Análisis de variables categóricas
+
+```{r}
+V1 + V2 + V3 + V4 
+```
+
+Observando las proporciones de las variables categóricas, se puede notar que ninguna de ellas parece aportar información clara o relevante que explique la presencia de la enfermedad. Por ejemplo, en la variable **V1**, las categorías 0 y 1 presentan proporciones similares tanto en pacientes enfermos como sanos, lo que sugiere que esta variable no discrimina entre los dos grupos.
+
+Este mismo patrón se repite en las variables **V2**, **V3** y **V4**, donde no se observan diferencias significativas en las proporciones de la variable `Y` dentro de cada categoría. Por lo tanto, **estas variables no muestran una asociación visual evidente con la enfermedad**, al menos desde este enfoque descriptivo.
+
+
+```{r}
+
+V5 <- ggplot(data) +
+  aes(x = factor(Y), y = V5, fill = factor(Y)) +
+  geom_violin(trim = FALSE, color = NA, alpha = 0.7) +
+  geom_boxplot(width = 0.1, color = "black", outlier.shape = NA) +  # oculta outliers
+  scale_fill_manual(values = c(`0` = "#0696C3", `1` = "#DD0D0D")) +
+ labs(x = "Presencia de enfermedad", y = "Valor de la variable V5", title = "Distribución de V5 ")
+  theme_minimal()
+  
+V6 <- ggplot(data) +
+  aes(x = factor(Y), y = V6, fill = factor(Y)) +
+  geom_violin(trim = FALSE, color = NA, alpha = 0.7) +
+  geom_boxplot(width = 0.1, color = "black", outlier.shape = NA) +
+ scale_fill_manual(values = c(`0` = "#0696C3", `1` = "#DD0D0D")) +
+  labs(x = "Presencia de enfermedad", y = "Valor de la variable V6", title = "Distribución de V6") +
+  theme_minimal()
+
+V7 <- ggplot(data) +
+  aes(x = factor(Y), y = V7, fill = factor(Y)) +
+  geom_violin(trim = FALSE, color = NA, alpha = 0.7) +
+  geom_boxplot(width = 0.1, color = "black", outlier.shape = NA) +
+  scale_fill_manual(values = c(`0` = "#0696C3", `1` = "#DD0D0D")) +
+  labs(x = "Presencia de enfermedad", y = "Valor de la variable V7", title = "Distribución de V7") +
+  theme_minimal()
+
+V8 <- ggplot(data) +
+  aes(x = factor(Y), y = V8, fill = factor(Y)) +
+  geom_violin(trim = FALSE, color = NA, alpha = 0.7) +
+  geom_boxplot(width = 0.1, color = "black", outlier.shape = NA) +
+ scale_fill_manual(values = c(`0` = "#0696C3", `1` = "#DD0D0D")) +
+  labs(x = "Presencia de enfermedad", y = "Valor de la variable V8", title = "Distribución de V8") +
+  theme_minimal()
+
+V9 <- ggplot(data) +
+  aes(x = factor(Y), y = V9, fill = factor(Y)) +
+  geom_violin(trim = FALSE, color = NA, alpha = 0.7) +
+  geom_boxplot(width = 0.1, color = "black", outlier.shape = NA) +
+ scale_fill_manual(values = c(`0` = "#0696C3", `1` = "#DD0D0D")) +
+  labs(x = "Presencia de enfermedad", y = "Valor de la variable V9", title = "Distribución de V9") +
+  theme_minimal()
+
+V10 <- ggplot(data) +
+  aes(x = factor(Y), y = V10, fill = factor(Y)) +
+  geom_violin(trim = FALSE, color = NA, alpha = 0.7) +
+  geom_boxplot(width = 0.1, color = "black", outlier.shape = NA) +
+  scale_fill_manual(values = c(`0` = "#0696C3", `1` = "#DD0D0D")) +
+  labs(x = "Presencia de enfermedad", y = "Valor de la variable V10", title = "Distribución de V10") +
+  theme_minimal()
+
+
+```
+
+
+## Análisis de variables continuas
+
+```{r, fig.width=15, fig.height=10}
+V5 + V6 + V7 + V8 + V9 + V10
+```
+
+En el caso de las variables continuas, se observa un cambio relevante en sus distribuciones, ya que la presencia o ausencia de la enfermedad parece influir en la forma de los datos. Por ejemplo, en las variables **V5**, **V6** y **V9**, la enfermedad se asocia con colas más pesadas, lo cual desplaza la media y modifica la simetría de la distribución.
+
+Asimismo, en la variable **V8** se aprecia que los percentiles tienden a agruparse más cerca de la media en los pacientes con enfermedad, lo que sugiere una menor dispersión en ese grupo.
+
+Estos patrones sugieren que la enfermedad tiene un impacto observable en la distribución de las variables continuas, lo cual podría ser útil para desarrollar un modelo de aprendizaje automático (Machine Learning) que permita predecir si un paciente tiene o no la enfermedad. En consecuencia, **las variables continuas parecen ser más informativas** desde un enfoque descriptivo y podrían tener mayor peso explicativo en un modelo predictivo.
+
+
+
+
+
+
+
+```{r}
+esquisse::esquisser(data)
+```
+
+```{r}
+set.seed(12673)  #Poniendo un seed para la reproducibilidad
+split <- initial_split(data, prop = 0.7, strata = Y) # Haciendo la division de los datos en training y test
+train_data <- training(split)
+test_data  <- testing(split)
+
+# Modelo
+modelo_glm <- logistic_reg(
+  mode = "classification",
+  penalty = tune(),
+  mixture = 1  # Usando Lasso (mixture = 1 para Lasso, 0 para Ridge, entre 0 y 1 para Elastic Net
+) %>%
+  set_engine("glmnet")
+
+modelo_glm%>%translate() # Viendo lo que el modelo esta procesando 
+
+# Receta
+transformer <- recipe(Y ~ ., data = train_data) %>%
+  step_nzv(all_predictors()) %>%
+  step_center(all_numeric_predictors()) %>%
+  step_scale(all_numeric_predictors()) %>%
+  step_dummy(all_nominal_predictors())
+
+# Folds de validación cruzada
+cv_folds <- vfold_cv(train_data, v = 5, strata = Y) #strata = Y, para asegurar que la variable de estratificación sea Y
+
+# Workflow
+workflow_modelado <- workflow() %>%
+  add_recipe(transformer) %>%
+  add_model(modelo_glm)
+
+# Malla para los hiperparametros
+my_grid <- tibble(
+  penalty = 10^seq(-3, 2, length.out = 50)
+)
+
+# Tuning
+registerDoParallel(cores = parallel::detectCores() - 2)
+
+grid_fit <- tune_grid(
+  object    = workflow_modelado,
+  resamples = cv_folds,
+  metrics   = metric_set(accuracy, sens, yardstick::spec),
+  control   = control_resamples(save_pred = TRUE),
+  grid      = grid = my_grid
+)
+
+stopImplicitCluster()
+
+
+
+```
+
+```{r}
+best_params <- select_best(grid_fit, metric = "accuracy")
+
+
+final_model <- finalize_workflow(
+  workflow_modelado,
+  best_params
+)
+
+final_fit <- last_fit(final_model, split)
+
+collect_metrics(final_fit)
+
+```
+```{r}
+collect_predictions(final_fit) %>%
+  yardstick::f_meas(truth = Y, estimate = .pred_class)
+
+```
+
+
+
+
+
