@@ -25,7 +25,7 @@ library(GGally)
 library(doParallel)
 library(yardstick)
 
-
+library(stats )
 # Orden de las grafica 
 library(patchwork)
 ```
@@ -46,21 +46,25 @@ Las variables `V1`, `V2`, `V3` y `V4` son **categóricas**, mientras que las var
 ```{r Data}
 
 data <- read.csv("C:/Users/ferna/Documents/Seminario_Estadistica/Proyecto_3/Ejercicio_2/Data/DatosTrain_Tarea3.csv")
-data
+
 
 ```
-```{r Funciones}
-# Df, para guarda los datos de los modelos que hemos generado
 
+
+```{r Funciones}
+# Df, para guarda los datos de los modelos que hemos generado, para poder hacer comparaciones o graficas
 df_resultados <- data.frame(
-  Titulo = character(),
-  Accuracy = numeric(),
-  TCC_clase_0 = numeric(),
-  TCC_clase_1 = numeric(),
+  Titulo = character(), # Variable para describir que modelo estamos usando para trabajar y si usa un metodo de seleccion
+  Accuracy = numeric(), # Metrica accuracy, para ver que tan bien esta funcionando el modelo
+  TCC_clase_0 = numeric(), # Metrica para evaluar falsos o verdaderos positivos
+  TCC_clase_1 = numeric(), # Metrica para evaluar falsos o verdaderos negativos
   stringsAsFactors = FALSE
 )
 
 
+
+
+# Agrega una nueva file a nuestro df, Resultados
 nueva_fila_resultados <- function(titulo, accuracy, tcc0, tcc1) {
   fila <- data.frame(
     Titulo = titulo,
@@ -75,7 +79,15 @@ nueva_fila_resultados <- function(titulo, accuracy, tcc0, tcc1) {
   
 }
 
-salidaModelos <- function(grid, workflow){
+
+
+#Automatiza la lectura de salida de nuestro modelos de ML, solo debes usar Tydymodels, pasarle el grid y el workflow
+# Parametros:
+# grid: El grid de hiperparámetros ajustados por el modelo
+# workflow: El workflow que contiene el modelo y la receta de preprocesamiento
+# trainingDat: El conjunto de datos de entrenamiento (por defecto es train_data)
+
+salidaModelos <- function(grid, workflow, trainingDat =train_data ){
   mejores_hiperpar <- select_best(grid, metric = "accuracy") #grid_fit
 
 modelo_glm <- finalize_workflow(
@@ -85,7 +97,7 @@ modelo_glm <- finalize_workflow(
 
 modelo_glm_fit <-  modelo_glm %>%
                    fit(
-                     data = train_data
+                     data = trainingDat
                    )
 
 #Predicciones 
@@ -110,6 +122,7 @@ tcc_clase_1 <- predicciones %>%
 tcc_clase_0 <- predicciones %>%
   sens(truth = Y, estimate = .pred_class, event_level = "first")
 
+# Guardando los resultados en un data frame, que es lo que vamos a guardar en el df_Final 
 out <- list(
   accuracy = accuracy_general$.estimate,
   tcc_clase_0 = tcc_clase_0$.estimate,
@@ -120,10 +133,37 @@ out <- list(
 return(out)
 }
 
+
+#Funcion para hacer seleccion de variable, usando el metodo Stepwise Backward
+#Parametros:
+# modelo: Un string con el modelo que se va a usar, por ejemplo "V1 + V2 + V3 + V4 + V5 + V6 + V7 + V8 + V9 + V10"
+# link: El link que se va a usar, por defecto es "logit"
+#data: El dataframe que contiene las variables y la variable de respuesta `Y`
+StepwiseBack <- function(modelo, link = "logit",  datos){
+  
+   formula <- as.formula(paste("Y ~ ", modelo ))
+  
+   model <- glm(formula, family = binomial(link = link), data = datos)
+   
+   #print( summary(model))
+   #Haciendolo Backward
+   modelo_step <- stats::step(
+      object = model,
+      direction = "backward",
+      scope = list(upper = model, lower = ~1),
+      trace = FALSE
+  )
+    
+  return(modelo_step) 
+}
+
 ```
 
 
 ```{r Pre_procesamiento}
+
+# Pasando a factores todos los datos
+
 data <- data %>%
   mutate(
     V1 = as.factor(V1),
@@ -132,7 +172,21 @@ data <- data %>%
     V4 = as.factor(V4), 
     Y = as.factor(Y)
   )
+filtro <- data %>% select(-Y)
+
+interacciones_df <- model.matrix(~ .^2, data = filtro)[, -1] %>%  # ^2 = hasta interacciones de orden 2
+  as.data.frame()
+
+
+interacciones_df <- cbind(interacciones_df, Y = data$Y)  # Agregando la variable Y al dataframe de interacciones
+colnames(interacciones_df) <- gsub(":", "_x_", colnames(interacciones_df))
+
+interacciones_df
 ```
+
+
+
+
 
 
 ```{r}
@@ -278,23 +332,25 @@ set.seed(12673)  #Poniendo un seed para la reproducibilidad
 split <- initial_split(data, prop = 0.8, strata = Y) # Haciendo la division de los datos en training y test
 train_data <- training(split)
 test_data  <- testing(split)
+
 ```
 
 
-```{r}
+```{r Tools}
 #Cosas generales de los modelos 
 
 # Folds de validación cruzada
 cv_folds <- vfold_cv(train_data, v = 5, strata = Y) #strata = Y, para asegurar que la variable de estratificación sea Y
 
 
-# Malla para los hiperparametros
+# Malla para los hiperparametros, para tunear al modelo
 my_grid <- tibble(
   penalty = 10^seq(-3, 2, length.out = 50)
 )
 
+#Funcion para outomatizar el preprocesamiento de los datos 
 trans <- function(training_data){
-  rep <-  recipe(Y ~ ., data = train_data) %>%
+  rep <-  recipe(Y ~ ., data = training_data) %>%
         step_nzv(all_predictors()) %>%
         step_center(all_numeric_predictors()) %>%
          step_scale(all_numeric_predictors()) %>%
@@ -320,7 +376,7 @@ modelo_glm <- logistic_reg(
 #modelo_glm%>%translate() # Viendo lo que el modelo esta procesando 
 
 # Receta
-transformer <- 
+transformer <- trans(train_data)
 
 # Workflow
 workflow_modelado <- workflow() %>%
@@ -328,7 +384,7 @@ workflow_modelado <- workflow() %>%
   add_model(modelo_glm)
 
 # Tuning
-registerDoParallel(cores = parallel::detectCores() - 2)
+registerDoParallel(cores = parallel::detectCores() - 2) #Funcion para paralelizar el proceso de tuning deje libre 2 cores de tu cpu
 
 grid_fit <- tune_grid(
   object    = workflow_modelado,
@@ -357,11 +413,7 @@ df_resultados <-nueva_fila_resultados ("Modelo Logit, efectos principales", mode
 ```{r, Modelo_Interacciones}
 #============================================== Inciso ii) ==============================================
 # Receta, para modelo logit, con efectos principales e interacciones 
-transformer_int <- recipe(Y ~ ., data = train_data) %>%
-  step_nzv(all_predictors()) %>%
-  step_center(all_numeric_predictors()) %>%
-  step_scale(all_numeric_predictors()) %>%
-  step_dummy(all_nominal_predictors()) %>%
+transformer_int <- trans(train_data) %>%
  step_interact(terms = ~ all_predictors():all_predictors())
   
 # Workflow
@@ -384,22 +436,42 @@ stopImplicitCluster()
 ```
 
 ```{r}
-
 modeloLogitInteracciones<- salidaModelos(grid_fit2, workflow_modelado2)
 df_resultados <-nueva_fila_resultados ("Modelo Logit, E-P e Interacciones", modeloLogitInteracciones$accuracy, modeloLogitInteracciones$tcc_clase_0, modeloLogitInteracciones$tcc_clase_1)
+```
+
+```{r}
+head(data)
+```
+
+
+```{r}
+#============================================== Inciso iii) ==============================================
+
+Seleccion_EP <- StepwiseBack(".", link = "logit", data)
+Seleccio_Interacciones <- StepwiseBack(".", link = "logit",   interacciones_df) # Seleccion de variables usando el metodo Stepwise Backward, de las interacciones
+
+
+#Seleccio_Interacciones
+#Seleccion_EP
+```
+
+```{r Seleecion_y_split}
+df_Seleccion_Interacciones <- interacciones_df %>% select(
+  V5, V6, V7, V10, V11_x_V21,  V11_x_V41, V21_x_V41,V21_x_V5 , V21_x_V6 , V21_x_V7 ,V31_x_V7, V31_x_V8 , V41_x_V5 , V41_x_V8, V41_x_V10, V5_x_V6 , V6_x_V8 , V7_x_V8 , V8_x_V9 , V9_x_V10 )
+
+df_Seleccion_EP <- data %>% select(
+  V2)
 ```
 
 
 
 ```{r}
-#============================================== Inciso iii) ==============================================
-#Haciendo primero una seleccion de variables
-
+#Division para los datos con interacciones 
+split_interacciones <- initial_split(interacciones_df, prop = 0.8, strata = Y) # Haciendo la division de los datos en training y test
+train_data_interacciones <- training(split_interacciones)
+test_data_interacciones  <- testing(split_interacciones)
 ```
-
-
-
-
 
 
 
@@ -411,44 +483,17 @@ modelo_probit <- logistic_reg(mode = "classification") %>%
   set_engine("glm", family = binomial(link = "probit"))
 
 
-modelo_glm <- logistic_reg(
-  mode = "classification",
-  penalty = tune(),
-  mixture = 1
-) %>%
-  set_engine("glmnet")
 
-
-
-
-
-modelo_glm%>%translate() # Viendo lo que el modelo esta procesando 
 
 # Receta
-transformer3 <- recipe(Y ~ ., data = train_data) %>%
-  step_nzv(all_predictors()) %>%
-  step_center(all_numeric_predictors()) %>%
-  step_scale(all_numeric_predictors()) %>%
-  step_dummy(all_nominal_predictors()) %>%
+transformer3 <- trans(train_data) %>%
  step_interact(terms = ~ all_predictors():all_predictors())
-
-  #step_interact(terms = ~ all_predictors():all_predictors())
-#step_interact(terms = ~ V5:V6 + V5:V7 + V6:V8)
-    
-
-
-# Folds de validación cruzada
-cv_folds <- vfold_cv(train_data, v = 5, strata = Y) #strata = Y, para asegurar que la variable de estratificación sea Y
 
 # Workflow
 workflow_modelado3 <- workflow() %>%
   add_recipe(transformer3) %>%
-  add_model(modelo_glm)
+  add_model(modelo_probit)
 
-# Malla para los hiperparametros
-my_grid <- tibble(
-  penalty = 10^seq(-3, 2, length.out = 50)
-)
 
 # Tuning
 registerDoParallel(cores = parallel::detectCores() - 2)
@@ -469,6 +514,7 @@ stopImplicitCluster()
 
 ```{r}
 
-salidaModelos(grid_fit3, workflow_modelado3)
+modelo4<- salidaModelos(grid_fit3, workflow_modelado3)
+df_resultados <-nueva_fila_resultados ("Modelo Probit", modelo4$accuracy, modelo4$tcc_clase_0, modelo4$tcc_clase_1)
 
 ```
