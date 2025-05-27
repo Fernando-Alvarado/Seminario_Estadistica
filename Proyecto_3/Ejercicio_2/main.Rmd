@@ -87,7 +87,7 @@ nueva_fila_resultados <- function(titulo, accuracy, tcc0, tcc1) {
 # workflow: El workflow que contiene el modelo y la receta de preprocesamiento
 # trainingDat: El conjunto de datos de entrenamiento (por defecto es train_data)
 
-salidaModelos <- function(grid, workflow, trainingDat =train_data ){
+salidaModelos <- function(grid, workflow, trainingDat =train_data, testing_data = test_data ){
   mejores_hiperpar <- select_best(grid, metric = "accuracy") #grid_fit
 
 modelo_glm <- finalize_workflow(
@@ -104,9 +104,9 @@ modelo_glm_fit <-  modelo_glm %>%
 #=====================================
 predicciones <- modelo_glm_fit %>%
   predict(
-    new_data = test_data,
+    new_data = testing_data,
     type = "class"  #Especifico que estoy trabajando con una regresion 
-  ) %>% bind_cols(test_data %>% select(Y))
+  ) %>% bind_cols(testing_data %>% select(Y))
 
 
 # MÉTRICAS Accuracy
@@ -399,8 +399,6 @@ stopImplicitCluster()
 
 
 ```
-
-
 ```{r Resultados_Modelo_Eectos_Principales}}
 
 modeloLogit<- salidaModelos(grid_fit, workflow_modelado)
@@ -409,9 +407,8 @@ df_resultados <-nueva_fila_resultados ("Modelo Logit, efectos principales", mode
 
 ```
 
-
 ```{r, Modelo_Interacciones}
-#============================================== Inciso ii) ==============================================
+
 # Receta, para modelo logit, con efectos principales e interacciones 
 transformer_int <- trans(train_data) %>%
  step_interact(terms = ~ all_predictors():all_predictors())
@@ -440,9 +437,7 @@ modeloLogitInteracciones<- salidaModelos(grid_fit2, workflow_modelado2)
 df_resultados <-nueva_fila_resultados ("Modelo Logit, E-P e Interacciones", modeloLogitInteracciones$accuracy, modeloLogitInteracciones$tcc_clase_0, modeloLogitInteracciones$tcc_clase_1)
 ```
 
-```{r}
-head(data)
-```
+
 
 
 ```{r}
@@ -458,20 +453,95 @@ Seleccio_Interacciones <- StepwiseBack(".", link = "logit",   interacciones_df) 
 
 ```{r Seleecion_y_split}
 df_Seleccion_Interacciones <- interacciones_df %>% select(
-  V5, V6, V7, V10, V11_x_V21,  V11_x_V41, V21_x_V41,V21_x_V5 , V21_x_V6 , V21_x_V7 ,V31_x_V7, V31_x_V8 , V41_x_V5 , V41_x_V8, V41_x_V10, V5_x_V6 , V6_x_V8 , V7_x_V8 , V8_x_V9 , V9_x_V10 )
+  V5, V6, V7, V10, V11_x_V21,  V11_x_V41, V21_x_V41,V21_x_V5 , V21_x_V6 , V21_x_V7 ,V31_x_V7, V31_x_V8 , V41_x_V5 , V41_x_V8, V41_x_V10, V5_x_V6 , V6_x_V8 , V7_x_V8 , V8_x_V9 , V9_x_V10, Y )
 
-df_Seleccion_EP <- data %>% select(
-  V2)
+
+
+df_Seleccion_EP <- data %>% select( V2, Y)
+
+
+#Division para los datos con interacciones 
+split_interacciones <- initial_split(df_Seleccion_Interacciones, prop = 0.8, strata = Y) # Haciendo la division de los datos en training y test
+train_data_interacciones <- training(split_interacciones)
+test_data_interacciones  <- testing(split_interacciones)
+
+# Division datos Efectos Principales seleccionados
+split_EP <- initial_split(df_Seleccion_EP, prop = 0.8, strata = Y) # Haciendo la division de los datos en training y test
+train_data_EP <- training(split_interacciones)
+test_data_EP  <- testing(split_interacciones)
+
 ```
-
 
 
 ```{r}
-#Division para los datos con interacciones 
-split_interacciones <- initial_split(interacciones_df, prop = 0.8, strata = Y) # Haciendo la division de los datos en training y test
-train_data_interacciones <- training(split_interacciones)
-test_data_interacciones  <- testing(split_interacciones)
+# DEFINICIÓN DEL MODELO Y DE LOS HIPERPARÁMETROS A OPTIMIZAR
+# =============================================================================
+modelo_glm <- logistic_reg(
+                 mode    = "classification",
+                 penalty = tune(),
+                 mixture = tune()
+              ) %>%
+              set_engine("glmnet")
+
+
+# DEFINICIÓN DEL PREPROCESADO
+# =============================================================================
+transformer <- recipe(
+                  formula = Y ~ .,
+                  data =  train_data_interacciones
+               ) %>%
+               step_naomit(all_predictors()) %>%
+               step_nzv(all_predictors()) %>%
+               step_center(all_numeric(), -all_outcomes()) %>%
+               step_scale(all_numeric(), -all_outcomes()) %>%
+               step_dummy(all_nominal(), -all_outcomes())
+
+# DEFINICIÓN DE LA ESTRATEGIA DE VALIDACIÓN Y CREACIÓN DE PARTICIONES
+# =============================================================================
+set.seed(1234)
+cv_folds <- vfold_cv(
+              data    = train_data_interacciones,
+              v       = 5,
+              strata  = Y
+             )
+
+# WORKFLOW
+# =============================================================================
+workflow_modelado <- workflow() %>%
+                     add_recipe(transformer) %>%
+                     add_model(modelo_glm)
+
+
+my_grid <- expand.grid(
+  penalty = 10^seq(-4, 1, length.out = 5),
+  mixture = seq(0, 1, length.out = 5)
+)
+
+# EJECUCIÓN DE LA OPTIMIZACIÓN DE HIPERPARÁMETROS
+# =============================================================================
+registerDoParallel(cores = parallel::detectCores() - 2)
+grid_fit <- tune_grid(
+              object    = workflow_modelado,
+              resamples = cv_folds,
+              metrics   = metric_set(accuracy, sens, yardstick::spec),
+              control   = control_resamples(save_pred = TRUE),
+              # Hiperparámetros
+              grid      = my_grid
+            )
+stopImplicitCluster()
 ```
+
+```{r}
+modeloLogitInteracciones<- salidaModelos(grid_fit, workflow_modelado, trainingDat = train_data_interacciones, testing_data = test_data_interacciones)
+df_resultados <-nueva_fila_resultados ("Modelo Largo", modeloLogitInteracciones$accuracy, modeloLogitInteracciones$tcc_clase_0, modeloLogitInteracciones$tcc_clase_1)
+```
+
+
+
+
+
+
+
 
 
 
