@@ -49,7 +49,7 @@ data <- read.csv("C:/Users/ferna/Documents/Seminario_Estadistica/Proyecto_3/Ejer
 data
 
 ```
-```{r}
+```{r Funciones}
 # Df, para guarda los datos de los modelos que hemos generado
 
 df_resultados <- data.frame(
@@ -73,6 +73,51 @@ nueva_fila_resultados <- function(titulo, accuracy, tcc0, tcc1) {
   df_resultados <- rbind(df_resultados, fila)
   return(df_resultados)
   
+}
+
+salidaModelos <- function(grid, workflow){
+  mejores_hiperpar <- select_best(grid, metric = "accuracy") #grid_fit
+
+modelo_glm <- finalize_workflow(
+                x = workflow, #workflow_modelado
+                parameters = mejores_hiperpar
+              )
+
+modelo_glm_fit <-  modelo_glm %>%
+                   fit(
+                     data = train_data
+                   )
+
+#Predicciones 
+#=====================================
+predicciones <- modelo_glm_fit %>%
+  predict(
+    new_data = test_data,
+    type = "class"  #Especifico que estoy trabajando con una regresion 
+  ) %>% bind_cols(test_data %>% select(Y))
+
+
+# MÉTRICAS Accuracy
+# ====================================
+accuracy_general <- predicciones %>%
+  accuracy(truth = Y, estimate = .pred_class)
+
+# TCC clase 1 (Sensibilidad clase 1)
+tcc_clase_1 <- predicciones %>%
+  sens(truth = Y, estimate = .pred_class, event_level = "second")
+
+# TCC clase 0 (Sensibilidad clase 0)
+tcc_clase_0 <- predicciones %>%
+  sens(truth = Y, estimate = .pred_class, event_level = "first")
+
+out <- list(
+  accuracy = accuracy_general$.estimate,
+  tcc_clase_0 = tcc_clase_0$.estimate,
+  tcc_clase_1 = tcc_clase_1$.estimate
+)
+
+
+return(out)
 }
 
 ```
@@ -226,13 +271,6 @@ Estos patrones sugieren que la enfermedad tiene un impacto observable en la dist
 
 
 
-
-
-
-```{r}
-esquisse::esquisser(data)
-```
-
 ```{r Division_datos}
 
 #Dividiendo los datos en training y test
@@ -243,8 +281,35 @@ test_data  <- testing(split)
 ```
 
 
+```{r}
+#Cosas generales de los modelos 
+
+# Folds de validación cruzada
+cv_folds <- vfold_cv(train_data, v = 5, strata = Y) #strata = Y, para asegurar que la variable de estratificación sea Y
+
+
+# Malla para los hiperparametros
+my_grid <- tibble(
+  penalty = 10^seq(-3, 2, length.out = 50)
+)
+
+trans <- function(training_data){
+  rep <-  recipe(Y ~ ., data = train_data) %>%
+        step_nzv(all_predictors()) %>%
+        step_center(all_numeric_predictors()) %>%
+         step_scale(all_numeric_predictors()) %>%
+         step_dummy(all_nominal_predictors())
+  return(rep)
+}
+```
+
+
+
+
+
 ```{r, Modelo_con_todasLasVaribles}
-# Modelo
+#============================================== Inciso ii) ==============================================
+# Modelo logit, efectos principales
 modelo_glm <- logistic_reg(
   mode = "classification",
   penalty = tune(),
@@ -252,27 +317,15 @@ modelo_glm <- logistic_reg(
 ) %>%
   set_engine("glmnet")
 
-modelo_glm%>%translate() # Viendo lo que el modelo esta procesando 
+#modelo_glm%>%translate() # Viendo lo que el modelo esta procesando 
 
 # Receta
-transformer <- recipe(Y ~ ., data = train_data) %>%
-  step_nzv(all_predictors()) %>%
-  step_center(all_numeric_predictors()) %>%
-  step_scale(all_numeric_predictors()) %>%
-  step_dummy(all_nominal_predictors())
-
-# Folds de validación cruzada
-cv_folds <- vfold_cv(train_data, v = 5, strata = Y) #strata = Y, para asegurar que la variable de estratificación sea Y
+transformer <- 
 
 # Workflow
 workflow_modelado <- workflow() %>%
   add_recipe(transformer) %>%
   add_model(modelo_glm)
-
-# Malla para los hiperparametros
-my_grid <- tibble(
-  penalty = 10^seq(-3, 2, length.out = 50)
-)
 
 # Tuning
 registerDoParallel(cores = parallel::detectCores() - 2)
@@ -291,54 +344,94 @@ stopImplicitCluster()
 
 ```
 
-```{r}
 
-# Obtener las predicciones finales
-preds <- final_fit %>% collect_predictions()
+```{r Resultados_Modelo_Eectos_Principales}}
 
-# Accuracy general
-accuracy_general <- preds %>%
-  accuracy(truth = Y, estimate = .pred_class)
-
-# TCC clase 1 (Sensibilidad clase 1)
-tcc_clase_1 <- preds %>%
-  sens(truth = Y, estimate = .pred_class, event_level = "second")
-
-# TCC clase 0 (Sensibilidad clase 0)
-tcc_clase_0 <- preds %>%
-  sens(truth = Y, estimate = .pred_class, event_level = "first")
-
-# Unir todo en una sola tabla
-resultado_final <- bind_rows(
-  tibble(.metric = "accuracy", .estimate = accuracy_general$.estimate),
-  tibble(.metric = "TCC_clase_0", .estimate = tcc_clase_0$.estimate),
-  tibble(.metric = "TCC_clase_1", .estimate = tcc_clase_1$.estimate)
-)
-
-resultado_final
+modeloLogit<- salidaModelos(grid_fit, workflow_modelado)
+df_resultados <-nueva_fila_resultados ("Modelo Logit, efectos principales", modeloLogit$accuracy, modeloLogit$tcc_clase_0, modeloLogit$tcc_clase_1)
 
 
 ```
 
 
 ```{r, Modelo_Interacciones}
-# Modelo
-modelo_glm <- logistic_reg(
-  mode = "classification",
-  penalty = tune(),
-  mixture = 1  # Usando Lasso (mixture = 1 para Lasso, 0 para Ridge, entre 0 y 1 para Elastic Net
-) %>%
-  set_engine("glmnet")
-
-modelo_glm%>%translate() # Viendo lo que el modelo esta procesando 
-
-# Receta
-transformer <- recipe(Y ~ ., data = train_data) %>%
+#============================================== Inciso ii) ==============================================
+# Receta, para modelo logit, con efectos principales e interacciones 
+transformer_int <- recipe(Y ~ ., data = train_data) %>%
   step_nzv(all_predictors()) %>%
   step_center(all_numeric_predictors()) %>%
   step_scale(all_numeric_predictors()) %>%
   step_dummy(all_nominal_predictors()) %>%
-  step_interact(terms = ~.^2) %>% 
+ step_interact(terms = ~ all_predictors():all_predictors())
+  
+# Workflow
+workflow_modelado2 <- workflow() %>%
+  add_recipe(transformer_int) %>%
+  add_model(modelo_glm)
+
+# Tuning
+registerDoParallel(cores = parallel::detectCores() - 2)
+
+grid_fit2 <- tune_grid(
+  object    = workflow_modelado2,
+  resamples = cv_folds,
+  metrics   = metric_set(accuracy, sens, yardstick::spec),
+  control   = control_resamples(save_pred = TRUE),
+  grid      = my_grid
+)
+
+stopImplicitCluster()
+```
+
+```{r}
+
+modeloLogitInteracciones<- salidaModelos(grid_fit2, workflow_modelado2)
+df_resultados <-nueva_fila_resultados ("Modelo Logit, E-P e Interacciones", modeloLogitInteracciones$accuracy, modeloLogitInteracciones$tcc_clase_0, modeloLogitInteracciones$tcc_clase_1)
+```
+
+
+
+```{r}
+#============================================== Inciso iii) ==============================================
+#Haciendo primero una seleccion de variables
+
+```
+
+
+
+
+
+
+
+
+```{r, Modelo_Interacciones}
+#============================================== Inciso iv) ==============================================
+# Modelo Probit
+modelo_probit <- logistic_reg(mode = "classification") %>%
+  set_engine("glm", family = binomial(link = "probit"))
+
+
+modelo_glm <- logistic_reg(
+  mode = "classification",
+  penalty = tune(),
+  mixture = 1
+) %>%
+  set_engine("glmnet")
+
+
+
+
+
+modelo_glm%>%translate() # Viendo lo que el modelo esta procesando 
+
+# Receta
+transformer3 <- recipe(Y ~ ., data = train_data) %>%
+  step_nzv(all_predictors()) %>%
+  step_center(all_numeric_predictors()) %>%
+  step_scale(all_numeric_predictors()) %>%
+  step_dummy(all_nominal_predictors()) %>%
+ step_interact(terms = ~ all_predictors():all_predictors())
+
   #step_interact(terms = ~ all_predictors():all_predictors())
 #step_interact(terms = ~ V5:V6 + V5:V7 + V6:V8)
     
@@ -348,8 +441,8 @@ transformer <- recipe(Y ~ ., data = train_data) %>%
 cv_folds <- vfold_cv(train_data, v = 5, strata = Y) #strata = Y, para asegurar que la variable de estratificación sea Y
 
 # Workflow
-workflow_modelado <- workflow() %>%
-  add_recipe(transformer) %>%
+workflow_modelado3 <- workflow() %>%
+  add_recipe(transformer3) %>%
   add_model(modelo_glm)
 
 # Malla para los hiperparametros
@@ -360,8 +453,8 @@ my_grid <- tibble(
 # Tuning
 registerDoParallel(cores = parallel::detectCores() - 2)
 
-grid_fit <- tune_grid(
-  object    = workflow_modelado,
+grid_fit3 <- tune_grid(
+  object    = workflow_modelado3,
   resamples = cv_folds,
   metrics   = metric_set(accuracy, sens, yardstick::spec),
   control   = control_resamples(save_pred = TRUE),
@@ -376,32 +469,6 @@ stopImplicitCluster()
 
 ```{r}
 
-# Obtener las predicciones finales
-preds <- final_fit %>% collect_predictions()
-
-# Accuracy general
-accuracy_general <- preds %>%
-  accuracy(truth = Y, estimate = .pred_class)
-
-# TCC clase 1 (Sensibilidad clase 1)
-tcc_clase_1 <- preds %>%
-  sens(truth = Y, estimate = .pred_class, event_level = "second")
-
-# TCC clase 0 (Sensibilidad clase 0)
-tcc_clase_0 <- preds %>%
-  sens(truth = Y, estimate = .pred_class, event_level = "first")
-
-# Unir todo en una sola tabla
-resultado_final <- bind_rows(
-  tibble(.metric = "accuracy", .estimate = accuracy_general$.estimate),
-  tibble(.metric = "TCC_clase_0", .estimate = tcc_clase_0$.estimate),
-  tibble(.metric = "TCC_clase_1", .estimate = tcc_clase_1$.estimate)
-)
-
-resultado_final
-
+salidaModelos(grid_fit3, workflow_modelado3)
 
 ```
-
-
-
