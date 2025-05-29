@@ -24,6 +24,8 @@ library(univariateML)
 library(GGally)
 library(doParallel)
 library(yardstick)
+library(knitr)
+
 
 library(stats )
 # Orden de las grafica 
@@ -46,10 +48,10 @@ Las variables `V1`, `V2`, `V3` y `V4` son **categóricas**, mientras que las var
 ```{r Data}
 
 data <- read.csv("C:/Users/ferna/Documents/Seminario_Estadistica/Proyecto_3/Ejercicio_2/Data/DatosTrain_Tarea3.csv")
-
-
+kable(head(data, 5), caption = "Visualizacion de los datos")
 ```
 
+A partir de estos datos, realizaremos manualmente las interacciones entre todas las variables y llevaremos a cabo una selección de variables utilizando los métodos Stepwise Backward y Stepwise Forward, con el objetivo de encontrar un buen modelo de aprendizaje automático que nos ayude a predecir la presencia de la enfermedad.
 
 ```{r Funciones}
 # Df, para guarda los datos de los modelos que hemos generado, para poder hacer comparaciones o graficas
@@ -139,7 +141,7 @@ return(out)
 # modelo: Un string con el modelo que se va a usar, por ejemplo "V1 + V2 + V3 + V4 + V5 + V6 + V7 + V8 + V9 + V10"
 # link: El link que se va a usar, por defecto es "logit"
 #data: El dataframe que contiene las variables y la variable de respuesta `Y`
-StepwiseBack <- function(modelo, link = "logit",  datos){
+StepwiseBoth <- function(modelo, link = "logit",  datos){
   
    formula <- as.formula(paste("Y ~ ", modelo ))
   
@@ -147,15 +149,20 @@ StepwiseBack <- function(modelo, link = "logit",  datos){
    
    #print( summary(model))
    #Haciendolo Backward
-   modelo_step <- stats::step(
-      object = model,
-      direction = "backward",
-      scope = list(upper = model, lower = ~1),
+   modelo_both <- step(
+      object = modelo_nulo,
+      scope = list(lower = ~1, upper = modelo),
+      direction = "forward",
       trace = FALSE
-  )
-    
+   )
   return(modelo_step) 
 }
+
+
+
+
+
+
 
 ```
 
@@ -181,7 +188,7 @@ interacciones_df <- model.matrix(~ .^2, data = filtro)[, -1] %>%  # ^2 = hasta i
 interacciones_df <- cbind(interacciones_df, Y = data$Y)  # Agregando la variable Y al dataframe de interacciones
 colnames(interacciones_df) <- gsub(":", "_x_", colnames(interacciones_df))
 
-interacciones_df
+
 ```
 
 
@@ -312,7 +319,7 @@ V10 <- ggplot(data) +
 
 ## Análisis de variables continuas
 
-```{r, fig.width=15, fig.height=10}
+```{r}
 V5 + V6 + V7 + V8 + V9 + V10
 ```
 
@@ -364,7 +371,7 @@ trans <- function(training_data){
 
 
 ```{r, Modelo_con_todasLasVaribles}
-#============================================== Inciso ii) ==============================================
+#=============================================================================== Inciso ii) ===============================================================================
 # Modelo logit, efectos principales
 modelo_glm <- logistic_reg(
   mode = "classification",
@@ -399,6 +406,7 @@ stopImplicitCluster()
 
 
 ```
+
 ```{r Resultados_Modelo_Eectos_Principales}}
 
 modeloLogit<- salidaModelos(grid_fit, workflow_modelado)
@@ -408,8 +416,9 @@ df_resultados <-nueva_fila_resultados ("Modelo Logit, efectos principales", mode
 ```
 
 ```{r, Modelo_Interacciones}
-
 # Receta, para modelo logit, con efectos principales e interacciones 
+
+
 transformer_int <- trans(train_data) %>%
  step_interact(terms = ~ all_predictors():all_predictors())
   
@@ -437,19 +446,55 @@ modeloLogitInteracciones<- salidaModelos(grid_fit2, workflow_modelado2)
 df_resultados <-nueva_fila_resultados ("Modelo Logit, E-P e Interacciones", modeloLogitInteracciones$accuracy, modeloLogitInteracciones$tcc_clase_0, modeloLogitInteracciones$tcc_clase_1)
 ```
 
+```{r}
+head(data)
+```
 
+
+
+```{r PCA}
+library(factoextra)
+library(patchwork)
+dataNumericas <- data %>% select(V5:V10) # Seleccionando las variables numericas
+
+pca <- prcomp(dataNumericas, scale. = TRUE)
+
+summary(pca)
+
+
+
+
+
+# Gráficas individuales
+g1 <- fviz_contrib(pca, choice = "var", axes = 1) + ggtitle("Contribucion al componente 1")
+g2 <- fviz_contrib(pca, choice = "var", axes = 2) + ggtitle("Contribucion al componente 2")
+
+# Lado a lado
+g1 + g2
+
+
+
+```
 
 
 ```{r}
-#============================================== Inciso iii) ==============================================
+#=============================================================================== Inciso iii) ===============================================================================
 
 Seleccion_EP <- StepwiseBack(".", link = "logit", data)
 Seleccio_Interacciones <- StepwiseBack(".", link = "logit",   interacciones_df) # Seleccion de variables usando el metodo Stepwise Backward, de las interacciones
 
 
-#Seleccio_Interacciones
+```
+
+
+```{r}
+
+Seleccio_Interacciones
 #Seleccion_EP
 ```
+
+
+Resumen y explicacion de las variables seleccionadas
 
 ```{r Seleecion_y_split}
 df_Seleccion_Interacciones <- interacciones_df %>% select(
@@ -457,7 +502,7 @@ df_Seleccion_Interacciones <- interacciones_df %>% select(
 
 
 
-df_Seleccion_EP <- data %>% select( V2, Y)
+df_Seleccion_EP <- data %>% select( V2, Y, V5, V8)
 
 
 #Division para los datos con interacciones 
@@ -467,13 +512,81 @@ test_data_interacciones  <- testing(split_interacciones)
 
 # Division datos Efectos Principales seleccionados
 split_EP <- initial_split(df_Seleccion_EP, prop = 0.8, strata = Y) # Haciendo la division de los datos en training y test
-train_data_EP <- training(split_interacciones)
-test_data_EP  <- testing(split_interacciones)
+train_data_EP <- training(split_EP)
+test_data_EP  <- testing(split_EP)
 
 ```
 
 
+
+```{r Seleccion_EP}
+#Modelo con interacciones
+# DEFINICIÓN DEL MODELO Y DE LOS HIPERPARÁMETROS A OPTIMIZAR
+# =============================================================================
+modelo_glm <- logistic_reg(
+                 mode    = "classification",
+                 penalty = tune(),
+                 mixture = tune()
+              ) %>%
+              set_engine("glmnet")
+
+
+# DEFINICIÓN DEL PREPROCESADO
+# =============================================================================
+transformer <- recipe(
+                  formula = Y ~ .,
+                  data =  train_data_EP
+               ) %>%
+               step_naomit(all_predictors()) %>%
+               step_nzv(all_predictors()) %>%
+               step_center(all_numeric(), -all_outcomes()) %>%
+               step_scale(all_numeric(), -all_outcomes()) %>%
+               step_dummy(all_nominal(), -all_outcomes())
+
+# DEFINICIÓN DE LA ESTRATEGIA DE VALIDACIÓN Y CREACIÓN DE PARTICIONES
+# =============================================================================
+set.seed(1234)
+cv_folds <- vfold_cv(
+              data    = train_data_EP,
+              v       = 5,
+              strata  = Y
+             )
+
+# WORKFLOW
+# =============================================================================
+workflow_modeladoSEP <- workflow() %>%
+                     add_recipe(transformer) %>%
+                     add_model(modelo_glm)
+
+
+my_grid <- expand.grid(
+  penalty = 10^seq(-4, 1, length.out = 5),
+  mixture = seq(0, 1, length.out = 5)
+)
+
+# EJECUCIÓN DE LA OPTIMIZACIÓN DE HIPERPARÁMETROS
+# =============================================================================
+registerDoParallel(cores = parallel::detectCores() - 2)
+grid_fitSEP <- tune_grid(
+              object    = workflow_modeladoSEP,
+              resamples = cv_folds,
+              metrics   = metric_set(accuracy, sens, yardstick::spec),
+              control   = control_resamples(save_pred = TRUE),
+              # Hiperparámetros
+              grid      = my_grid
+            )
+stopImplicitCluster()
+```
+
 ```{r}
+modeloLogitSelectSEP<- salidaModelos(grid_fitSEP, workflow_modeladoSEP, trainingDat = train_data_EP, testing_data = test_data_EP)
+df_resultados <-nueva_fila_resultados ("Modelo Seleccion EP", modeloLogitSelectSEP$accuracy, modeloLogitSelectSEP$tcc_clase_0, modeloLogitSelectSEP$tcc_clase_1)
+```
+
+```{r Seleccion_Interacciones}
+#Modelo con interacciones
+
+
 # DEFINICIÓN DEL MODELO Y DE LOS HIPERPARÁMETROS A OPTIMIZAR
 # =============================================================================
 modelo_glm <- logistic_reg(
@@ -507,7 +620,7 @@ cv_folds <- vfold_cv(
 
 # WORKFLOW
 # =============================================================================
-workflow_modelado <- workflow() %>%
+workflow_modeladoSI <- workflow() %>%
                      add_recipe(transformer) %>%
                      add_model(modelo_glm)
 
@@ -520,8 +633,8 @@ my_grid <- expand.grid(
 # EJECUCIÓN DE LA OPTIMIZACIÓN DE HIPERPARÁMETROS
 # =============================================================================
 registerDoParallel(cores = parallel::detectCores() - 2)
-grid_fit <- tune_grid(
-              object    = workflow_modelado,
+grid_fitSI <- tune_grid(
+              object    = workflow_modeladoSI,
               resamples = cv_folds,
               metrics   = metric_set(accuracy, sens, yardstick::spec),
               control   = control_resamples(save_pred = TRUE),
@@ -532,17 +645,9 @@ stopImplicitCluster()
 ```
 
 ```{r}
-modeloLogitInteracciones<- salidaModelos(grid_fit, workflow_modelado, trainingDat = train_data_interacciones, testing_data = test_data_interacciones)
-df_resultados <-nueva_fila_resultados ("Modelo Largo", modeloLogitInteracciones$accuracy, modeloLogitInteracciones$tcc_clase_0, modeloLogitInteracciones$tcc_clase_1)
+modeloLogitInteraccionesSI <- salidaModelos(grid_fitSI, workflow_modeladoSI, trainingDat = train_data_interacciones, testing_data = test_data_interacciones)
+df_resultados <-nueva_fila_resultados ("Modelo Seleccion e Interacciones", modeloLogitInteraccionesSI$accuracy, modeloLogitInteraccionesSI$tcc_clase_0, modeloLogitInteraccionesSI$tcc_clase_1)
 ```
-
-
-
-
-
-
-
-
 
 
 
@@ -552,30 +657,50 @@ df_resultados <-nueva_fila_resultados ("Modelo Largo", modeloLogitInteracciones$
 modelo_probit <- logistic_reg(mode = "classification") %>%
   set_engine("glm", family = binomial(link = "probit"))
 
+# DEFINICIÓN DEL PREPROCESADO
+# =============================================================================
+transformer <- recipe(
+                  formula = Y ~ .,
+                  data =  train_data_interacciones
+               ) %>%
+               step_naomit(all_predictors()) %>%
+               step_nzv(all_predictors()) %>%
+               step_center(all_numeric(), -all_outcomes()) %>%
+               step_scale(all_numeric(), -all_outcomes()) %>%
+               step_dummy(all_nominal(), -all_outcomes())
+
+# DEFINICIÓN DE LA ESTRATEGIA DE VALIDACIÓN Y CREACIÓN DE PARTICIONES
+# =============================================================================
+set.seed(1234)
+cv_folds <- vfold_cv(
+              data    = train_data_interacciones,
+              v       = 5,
+              strata  = Y
+             )
+
+# WORKFLOW
+# =============================================================================
+workflow_modeladoProbit <- workflow() %>%
+                     add_recipe(transformer) %>%
+                     add_model(modelo_probit)
 
 
-
-# Receta
-transformer3 <- trans(train_data) %>%
- step_interact(terms = ~ all_predictors():all_predictors())
-
-# Workflow
-workflow_modelado3 <- workflow() %>%
-  add_recipe(transformer3) %>%
-  add_model(modelo_probit)
-
-
-# Tuning
-registerDoParallel(cores = parallel::detectCores() - 2)
-
-grid_fit3 <- tune_grid(
-  object    = workflow_modelado3,
-  resamples = cv_folds,
-  metrics   = metric_set(accuracy, sens, yardstick::spec),
-  control   = control_resamples(save_pred = TRUE),
-  grid      = my_grid
+my_grid <- expand.grid(
+  penalty = 10^seq(-4, 1, length.out = 5),
+  mixture = seq(0, 1, length.out = 5)
 )
 
+# EJECUCIÓN DE LA OPTIMIZACIÓN DE HIPERPARÁMETROS
+# =============================================================================
+registerDoParallel(cores = parallel::detectCores() - 2)
+grid_fitProbit <- tune_grid(
+              object    = workflow_modeladoProbit,
+              resamples = cv_folds,
+              metrics   = metric_set(accuracy, sens, yardstick::spec),
+              control   = control_resamples(save_pred = TRUE),
+              # Hiperparámetros
+              grid      = my_grid
+            )
 stopImplicitCluster()
 
 
@@ -584,7 +709,7 @@ stopImplicitCluster()
 
 ```{r}
 
-modelo4<- salidaModelos(grid_fit3, workflow_modelado3)
-df_resultados <-nueva_fila_resultados ("Modelo Probit", modelo4$accuracy, modelo4$tcc_clase_0, modelo4$tcc_clase_1)
+modeloProbitIN<- salidaModelos(grid_fitProbit, workflow_modeladoProbit, trainingDat = train_data_interacciones, testing_data = test_data_interacciones)
+df_resultados <-nueva_fila_resultados ("Modelo Probit", modeloProbitIN$accuracy, modeloProbitIN$tcc_clase_0, modeloProbitIN$tcc_clase_1)
 
 ```
