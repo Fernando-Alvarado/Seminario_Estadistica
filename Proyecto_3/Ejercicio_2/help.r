@@ -1,3 +1,26 @@
+#Cosas generales de los modelos 
+
+# Folds de validación cruzada
+cv_folds <- vfold_cv(train_data, v = 5, strata = Y) #strata = Y, para asegurar que la variable de estratificación sea Y
+
+
+# Malla para los hiperparametros, para tunear al modelo
+my_grid <- tibble(
+  penalty = 10^seq(-3, 2, length.out = 50)
+)
+
+#Funcion para outomatizar el preprocesamiento de los datos 
+trans <- function(training_data){
+  rep <-  recipe(Y ~ ., data = training_data) %>%
+        step_nzv(all_predictors()) %>%
+        step_center(all_numeric_predictors()) %>%
+         step_scale(all_numeric_predictors()) %>%
+         step_dummy(all_nominal_predictors())
+  return(rep)
+}
+
+
+
 salidaModelos <- function(grid, workflow, trainingDat =train_data, testing_data = test_data ){
   mejores_hiperpar <- select_best(grid, metric = "accuracy") #grid_fit
 

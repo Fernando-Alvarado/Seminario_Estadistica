@@ -141,7 +141,8 @@ return(out)
 # modelo: Un string con el modelo que se va a usar, por ejemplo "V1 + V2 + V3 + V4 + V5 + V6 + V7 + V8 + V9 + V10"
 # link: El link que se va a usar, por defecto es "logit"
 #data: El dataframe que contiene las variables y la variable de respuesta `Y`
-StepwiseBoth <- function(modelo, link = "logit",  datos){
+
+StepwiseBack <- function(modelo, link = "logit",  datos){
   
    formula <- as.formula(paste("Y ~ ", modelo ))
   
@@ -149,16 +150,15 @@ StepwiseBoth <- function(modelo, link = "logit",  datos){
    
    #print( summary(model))
    #Haciendolo Backward
-   modelo_both <- step(
-      object = modelo_nulo,
-      scope = list(lower = ~1, upper = modelo),
-      direction = "forward",
+   modelo_step <- stats::step(
+      object = model,
+      direction = "backward",
+      scope = list(upper = model, lower = ~1),
       trace = FALSE
-   )
+  )
+    
   return(modelo_step) 
 }
-
-
 
 
 
@@ -192,11 +192,7 @@ colnames(interacciones_df) <- gsub(":", "_x_", colnames(interacciones_df))
 ```
 
 
-
-
-
-
-```{r}
+```{r graficas_categoricas}
 V1 <- ggplot(data) +
   aes(x = V1, fill = factor(Y)) +
   geom_bar(position = "fill") +
@@ -263,7 +259,7 @@ Observando las proporciones de las variables categóricas, se puede notar que ni
 Este mismo patrón se repite en las variables **V2**, **V3** y **V4**, donde no se observan diferencias significativas en las proporciones de la variable `Y` dentro de cada categoría. Por lo tanto, **estas variables no muestran una asociación visual evidente con la enfermedad**, al menos desde este enfoque descriptivo.
 
 
-```{r}
+```{r graficas_continuas}
 
 V5 <- ggplot(data) +
   aes(x = factor(Y), y = V5, fill = factor(Y)) +
@@ -446,12 +442,6 @@ modeloLogitInteracciones<- salidaModelos(grid_fit2, workflow_modelado2)
 df_resultados <-nueva_fila_resultados ("Modelo Logit, E-P e Interacciones", modeloLogitInteracciones$accuracy, modeloLogitInteracciones$tcc_clase_0, modeloLogitInteracciones$tcc_clase_1)
 ```
 
-```{r}
-head(data)
-```
-
-
-
 ```{r PCA}
 library(factoextra)
 library(patchwork)
@@ -459,25 +449,29 @@ dataNumericas <- data %>% select(V5:V10) # Seleccionando las variables numericas
 
 pca <- prcomp(dataNumericas, scale. = TRUE)
 
-summary(pca)
 
-
-
-
+#summary(pca) Resumen del PCA
 
 # Gráficas individuales
 g1 <- fviz_contrib(pca, choice = "var", axes = 1) + ggtitle("Contribucion al componente 1")
 g2 <- fviz_contrib(pca, choice = "var", axes = 2) + ggtitle("Contribucion al componente 2")
 
 # Lado a lado
-g1 + g2
+#g1 + g2  Graficas para ver que varibales aportan mas a cada componente
 
 
 
 ```
 
+### Selección de variables
 
-```{r}
+Para la parte de selección de variables en este documento, se realizaron métodos como el Stepwise Backward (`Chunk StepwiseBack`) y un análisis de PCA (`Chunk PCA`). Esto se debió a que, en el caso de variables de solo efectos principales, el método Stepwise (tanto Backward, Forward como Both) solo seleccionaba a la variable `V2` como la única variable que aportaba información al modelo. Por lo tanto, se hizo un **PCA** para identificar cuáles eran las variables que aportaban más información a los dos primeros componentes, que son los que explican mayor varianza. Las variables seleccionadas para efectos principales fueron: `V2`, `V5` y `V8`.
+
+Por otro lado, las variables seleccionadas para el modelo con interacciones fueron: `V5`, `V6`, `V7`, `V10`, `V11_x_V21`, `V11_x_V41`, `V21_x_V41`, `V21_x_V5`, `V21_x_V6`, `V21_x_V7`, `V31_x_V7`, `V31_x_V8`, `V41_x_V5`, `V41_x_V8`, `V41_x_V10`, `V5_x_V6`, `V6_x_V8`, `V7_x_V8`, `V8_x_V9` y `V9_x_V10`. En este caso, las variables de tipo `Vi_x_Vj` representan interacciones entre variables (nombre genérico asignado por R al generar las interacciones en los datos). En este modelo, solo se empleó `Stepwise Backward`.
+
+Los resultados de la seleccion de variables se pueden ver en el chunk `Resultados_Seleccion`
+
+```{r StepwiseBack}
 #=============================================================================== Inciso iii) ===============================================================================
 
 Seleccion_EP <- StepwiseBack(".", link = "logit", data)
@@ -487,14 +481,12 @@ Seleccio_Interacciones <- StepwiseBack(".", link = "logit",   interacciones_df) 
 ```
 
 
-```{r}
+```{r Resultados_Seleccion}
 
-Seleccio_Interacciones
+#Seleccio_Interacciones
 #Seleccion_EP
 ```
 
-
-Resumen y explicacion de las variables seleccionadas
 
 ```{r Seleecion_y_split}
 df_Seleccion_Interacciones <- interacciones_df %>% select(
@@ -713,3 +705,12 @@ modeloProbitIN<- salidaModelos(grid_fitProbit, workflow_modeladoProbit, training
 df_resultados <-nueva_fila_resultados ("Modelo Probit", modeloProbitIN$accuracy, modeloProbitIN$tcc_clase_0, modeloProbitIN$tcc_clase_1)
 
 ```
+
+
+
+
+
+```{r}
+print(df_resultados)
+```
+
