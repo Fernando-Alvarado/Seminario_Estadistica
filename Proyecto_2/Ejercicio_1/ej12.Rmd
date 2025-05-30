@@ -1,0 +1,448 @@
+---
+output:
+  pdf_document:
+    latex_engine: xelatex
+geometry: top=1.5cm, bottom=1cm, left=1.5cm, right=1.5cm
+header-includes:
+  - \usepackage{fontspec}
+  - \usepackage{amsmath}
+  - \usepackage{amssymb}
+---
+
+```{r setup, include=FALSE}
+#Limpiamos entorno
+rm(list = ls(all.names = TRUE))
+
+gc() #Liberamos memoria
+
+knitr::opts_chunk$set(
+	error = F,
+	fig.align = "center",
+	fig.dim = c(5, 3),  
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+# \LARGE Bootstrap no paramétrico 
+
+Supongamos que tenemos una muestra  $X_{1},...,X_{n}$ que se distribuye de manera $Poisson(\theta)$. Dada la muestra buscamos estimar $\tau(\theta)=e^{-\theta}=\mathrm{P}(X=0)$. in embargo conocemos su UMVUE o estimador m´paximo verosimil $\tilde{\tau}(\theta)=\left(\frac{n-1}{n}\right)^{\sum_{i=1}^{n}X_{i}}$ el cual será de gran ayuda pues nos gustaria estimar  la distribución de $\tilde{\tau}$ y el valor de $V(\tilde{\tau})$. 
+
+Como primera parte una buena forma para aproximarnos al valor de $V(\tilde{\tau})$ haremos uso del método Monte Calo (MC) el cual es de mucha utilidad para aproximar distribuciones desconocidas,funciona generando B muestras aleatorias, como en este casi conocemos $X_{1},...,X_{n}$ , entonces el método hará un remuestreo. Supongamos los siguientes valores $\theta = 1.3$ , $n=20$ , $B=10,000$ 
+
+```{r librerias, include=FALSE}
+library(ggplot2)
+library(kableExtra)
+library(boot)
+library(patchwork)
+
+```
+  
+```{r parametros, include=FALSE}
+# Parámetros dados en el ejercicio
+theta <- 1.3    # Parámetro de la distribución Poisson
+n <- 20         # Tamaño de la muestra
+B <- 10000      # Número de réplicas  que haremos para Monte Carlo (MC) 
+
+```
+
+
+```{r funcion1, include=FALSE}
+# Calcular el estimador UMVUE de τ(θ) = e^{-θ}
+#para x Vector de datos que sigue una distribución Poisson debemos 
+# encontrar el valor del estimador τ̂
+
+
+# El estimador está dado por: τ̂ = ((n-1)/n)^{sum(Xi)}
+# donde n es el tamaño de la muestra y sum(Xi) es la suma de las observaciones
+# creamos la funcion para simular la forma del estimador de tau
+tau_gorro <- function(x) {
+  n <- length(x)
+  return(((n - 1) / n)^sum(x))
+  
+}
+```
+
+
+
+```{r SMC, include=FALSE}
+#Aplicamos la simulación Monte Carlo 
+
+# vector para almacenar los valores generados para  τ̂
+lamda <- 5 
+theta <- lamda 
+valores.tau_gorro <- numeric(B)
+
+# Realizar las B réplicas Monte Carlo
+set.seed(1234)  
+
+for (i in 1:B) {
+  # 1. Generar una muestra aleatoria de Poisson(θ) de tamaño n para las x 
+  muestra <- rpois(n, lambda = theta)
+  
+  # 2. Calcular τ̂ para esta muestra
+  valores.tau_gorro[i] <- tau_gorro(muestra)
+}
+
+# Hacemos las aproximaciones con montecarlo E(g(Z))= (SUM(g(Z_b)))/B
+
+
+# Calcular la aproximación Monte Carlo de E(τ̂)
+AproxE.Tau <- mean(valores.tau_gorro)
+
+# Calcular la aproximación Monte Carlo de V(τ̂)
+AproxV.Tau <- var(valores.tau_gorro)
+
+# Mostrar resultados
+
+cat("Aproximación Monte Carlo de E(τ̂):", AproxE.Tau, "\n")
+cat("Aproximación Monte Carlo de V(τ̂):", AproxV.Tau, "\n")
+
+
+```
+
+```{r SMC1, echo=FALSE , results='asis'}
+
+  data.frame(
+  "Aproximación  E(τ̂)" = 0.2721013,
+  "Aproximación V(τ̂)" = 0.005047061
+) %>% 
+  kbl(booktabs = TRUE, align = "c") %>% 
+  kable_styling(latex_options = c("HOLD_position", "scale_down", "striped"))
+
+```
+
+```{r histograma1, echo=FALSE}
+# Creaqmos un data frame con los datos obtenidos 
+datos_hist <- data.frame(tau_gorro = valores.tau_gorro)
+
+# Creamos un data frame con los datos obtenidos 
+datos_hist <- data.frame(tau_gorro = valores.tau_gorro)
+
+histograma <- ggplot(datos_hist, aes(x = tau_gorro)) +
+  geom_histogram(aes(y = ..density..), 
+                 bins = 30, 
+                 fill = "plum1", 
+                 color = "darkblue") +
+  geom_density(alpha = 0.2, fill = "deepskyblue2") +
+  labs(
+    title = expression(paste("Distribución del estimador ", hat(tau))),
+    subtitle = expression(paste("Poisson(", theta, "=5), n=20, B=10000")),
+    x = expression(hat(tau)),
+    y = "Densidad"
+  ) +
+  theme_minimal()
+
+# Mostramos el histograma
+print(histograma)
+```
+
+Con el método MC obtuvimos los resultados anteriores y con ayuda del histograma podemos observar como se comporta en realidad la distribución de $\tilde{\tau}$ 
+
+Ahora consideremos que no tenemos una muestra $X_{1},...,X_{n}$ sino mas bien una del tipo ${1, 2, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 0} $ con el mismo estimador buscamos la distribución de $\tilde{\tau}$ y el valor de $V(\tilde{\tau})$.Para este caso utilizaremos el método de bootstrap no paramétrico, igualmente generando B muestras aleatorias (remuestreo) 
+
+```{r datos2.0, include=FALSE}
+# inciso b)
+# Muestra 
+muestra <- c(1, 2, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1, 0, 0)
+n <- length(muestra)  # Tamaño de la muestra (20)
+B <- 10000           # Número de réplicas bootstrap
+
+
+```
+
+```{r funcion2, include=FALSE}
+
+# El estimador está dado por: τ̂ = ((n-1)/n)^{sum(Xi)}
+tau_gorro <- function(x, indices = NULL) {
+  # Permitir remuestreo para bootstrap
+  if (!is.null(indices)) {
+    x <- x[indices]
+  }
+  n <- length(x)
+  return(((n - 1) / n)^sum(x)) #función que nos dan para la estiamción 
+}
+```
+
+```{r datos2, include=FALSE}
+# Cálculo de la estimación puntual con la muestra original 
+
+
+tau_original <- tau_gorro(muestra)
+cat("Estimación puntual de P(X=0) con la muestra original:", tau_original, "\n")
+
+```
+
+```{r boot, include=FALSE}
+# Implementación de bootstrap no paramétrico 
+
+
+set.seed(1234)  
+resultados_boot <- boot(data = muestra, statistic = tau_gorro, R = B)
+
+
+```
+
+```{r resultados2, include=FALSE}
+# Extracción de resultados del bootstrap 
+
+# Estimación de la varianza
+varianza_boot <- var(resultados_boot$t)
+
+# Intervalo de confianza al 95% usando el método percentil
+ic_boot <- boot.ci(resultados_boot, type = "perc")
+ic_boot$percent
+
+```
+
+```{r resumen2, echo=FALSE}
+# Resumen resultados 
+
+#cat("\nResultados del bootstrap no paramétrico:\n")
+#cat("Estimación de P(X=0):", tau_original, "\n")
+#cat("Estimación de la varianza:", varianza_boot, "\n")
+#cat("Intervalo de confianza al 95%:", ic_boot$percent[4:5], "\n")
+
+data.frame("Estimación P(X=0) " = 0.5403601 ,
+           "Estimación varianza" = 0.005164643,
+           "Intervalo de confianza al 95%" = "(0.4181203 ,0.6983373)",
+           "Diferencia original-teorico"= 0.2678283) %>% 
+  kbl(booktabs = TRUE, align = "c") %>% 
+  kable_styling(latex_options = c("HOLD_position", "scale_down", "striped"))
+
+
+```
+```{r histograma 2 , echo=FALSE}
+# Histograma de las réplicas bootstrap 
+
+# Crear un data frame para ggplot
+datos_boot <- data.frame(tau = resultados_boot$t)
+
+# Crear el histograma
+library("ggplot2")
+histograma_boot <- ggplot(datos_boot, aes(x = tau)) +
+  geom_histogram(aes(y = ..density..), 
+                 bins = 30, 
+                 fill = "plum1", 
+                 color = "black") +
+  geom_density(alpha = 0.2, fill = "darkblue") +  # Añadir curva de densidad
+  geom_vline(xintercept = tau_original, linetype = "dashed", color = "red") +  # Línea para la estimación original
+  labs(title = "Distribución bootstrap del estimador τ̂",
+       subtitle = paste("Muestra n =", n, ", Réplicas B =", B),
+       x = "Valores de τ̂*", 
+       y = "Densidad") +
+  theme_minimal()
+
+print(histograma_boot)
+
+```
+Podemos observar que ahora los resutados no se comportan igual que en el método anterior 
+
+
+```{r comparacion, include=FALSE}
+# Comparación con los resultados del inciso a) (θ=1.3) 
+
+
+# Valor teórico cuando θ=1.3
+theta <- 1.3
+tau_teorico <- exp(-theta)
+
+# Resultados del inciso a) (simulados previamente)
+
+# Estos serían los valores obtenidos en la parte a)
+AproxE.Tau   # Valor aproximado de E(τ̂) del inciso a)
+AproxV.Tau   # Valor aproximado de V(τ̂) del inciso a)
+
+cat("\nComparación con el escenario teórico (θ=1.3):\n")
+cat("Valor teórico P(X=0) = e^-θ:", tau_teorico, "\n")
+cat("Diferencia entre estimación bootstrap y valor teórico:", tau_original - tau_teorico, "\n")
+cat("\nComparación con resultados del inciso a):\n")
+cat("E(τ̂) del inciso a):", AproxE.Tau, "\n")
+cat("V(τ̂) del inciso a):", AproxV.Tau, "\n")
+
+```
+
+Además observamos que la diferencia entre la estimación original y el resultado teórico no es tan pequeño por lo que podemos decir que las estimaciones dependen de la muestra que tomemos, así que probemos una forma de ver si las estimaciones son buenas para el valor real esperado via intervalos de confianza 
+
+
+```{r datos3, include=FALSE}
+theta <- 1.3
+n <- 20
+B <- 10000
+M <- 1000
+nivel_confianza <- 0.95
+valor_verdadero <- exp(-theta) # P(X=0) = e^{-θ} = 0.2725318
+
+```
+
+```{r funcion3, include=FALSE}
+
+# Misma función que hemos utilizado en incisos anteriores 
+
+tau_gorro <- function(x, indices = NULL) {
+  if (!is.null(indices)) x <- x[indices]
+  n <- length(x)
+  return(((n - 1) / n)^sum(x))
+}
+```
+
+```{r simulacion3, include=FALSE}
+
+# Inicio de simulación 
+
+set.seed(1234)
+
+# Inicializar vectores para resultados
+Z <- numeric(M) # Variable binaria (1 = contiene valor verdadero, 0 = no)
+estimaciones <- numeric(M)
+lim_inf <- numeric(M)
+lim_sup <- numeric(M)
+pb <- txtProgressBar(min = 0, max = M, style = 3)
+
+#Hcemos un for para las simulaciones de la Poisson, para el estimador y para la variable 
+# Z binaria 
+
+for (i in 1:M) {
+  # 1. Generar muestra Poisson
+  muestra_sim <- rpois(n, lambda = theta)
+  
+  # 2. Aplicar bootstrap
+  boot_result <- boot(muestra_sim, statistic = tau_gorro, R = B)
+  
+  # 3. Calcular IC percentil
+  ci <- tryCatch({
+    boot.ci(boot_result, type = "perc", conf = nivel_confianza)
+  }, error = function(e) NULL)
+  
+  # 4. Calcular variable Z
+  if (!is.null(ci)) {
+    estimaciones[i] <- mean(boot_result$t)
+    lim_inf[i] <- ci$percent[4]
+    lim_sup[i] <- ci$percent[5]
+    Z[i] <- as.numeric(ci$percent[4] <= valor_verdadero && valor_verdadero <= ci$percent[5])
+  }
+  
+  setTxtProgressBar(pb, i)
+}
+close(pb)
+
+```
+
+```{r resultados3, include=FALSE}
+
+# Resultados 
+
+
+# Filtrar simulaciones válidas porque en algunas resulta NA al momento de simular 
+validas <- !is.na(Z)
+Z <- Z[validas]
+estimaciones <- estimaciones[validas]
+lim_inf <- lim_inf[validas]
+lim_sup <- lim_sup[validas]
+
+# Calcular proporción de cobertura (promedio de Z)
+tasa_cobertura <- mean(Z) #0.942 es la tasa de confianza que obtenemos 
+                          # al simular 
+# la tasa es casi 0.95 de confianza que es lo que buscamos al principio , por lo tanto si 
+# contienen en su mayoria el valor verdadero 
+
+############ Resultados finales######################
+
+cat("Resultados de la simulación (M =", M, "repeticiones):\n")
+cat("--------------------------------------------\n")
+cat("Proporción de cobertura (E[Z]):", tasa_cobertura, "\n")
+cat("Nivel de confianza inicial:", nivel_confianza, "\n")
+cat("Diferencia:", tasa_cobertura - nivel_confianza, "\n")
+
+```
+
+```{r r3, echo=FALSE}
+
+data.frame("Proporción de cobertura (E[Z])" = 0.942 ,
+           "Nivel de confianza inicial" = 0.95,
+           "Diferencia" = -0.008 ) %>% 
+  kbl(booktabs = TRUE, align = "c") %>% 
+  kable_styling(latex_options = c("HOLD_position", "scale_down", "striped"))
+
+```
+Utilizamos una variable Z binaria que vale 1 si el resultado real de las simulaciones se encuentra dentro de los intervalos de confinza y 0 en otro caso, la proporcion que abarca el valor real en las estimaciones realizadas es un $94.2%$ es decir que solo tenemos un margen de error del $5.8%$, al principio esperamos abarcar un $95%$ de acertividad en los resultados (nivel de confianza), así que podemos decir que los resultados obtenidos son muy buenos. 
+
+```{r histograma3, echo=FALSE}
+
+#Como se realizaron muchas simulaciones, los resultados los presentaremos en un histograma
+
+# Histograma de las estimaciones
+hist_estimaciones <- ggplot(data.frame(Estimacion = estimaciones), aes(x = Estimacion)) +
+  geom_histogram(aes(y = ..density..), bins = 30, fill = "#EED2EE", color = "black") +
+  geom_vline(xintercept = valor_verdadero, color = "red", linetype = "dashed", linewidth = 1) +
+  labs(title = "Distribución bootstrap",
+       subtitle = paste("M =", length(Z), "simulaciones válidas"),
+       x = expression(hat(tau)), 
+       y = "Densidad") +
+  theme_minimal()
+
+# Gráfico de cobertura
+
+df_cobertura <- data.frame(
+  Cobertura = c("Cubre", "No cubre"),
+  Proporcion = c(tasa_cobertura, 1 - tasa_cobertura))
+
+```
+
+```{r r3.0, echo=FALSE,fig.align='center', fig.width=15, fig.height=4}
+
+# Hay un pequeño margen de error, tal vez con una muestra mas grande 
+# se podría corregir 
+
+# Lo mismo que en la parte anterior pero mostrado con gráfico de barras 
+bar_cobertura <- ggplot(df_cobertura, aes(x = Cobertura, y = Proporcion, fill = Cobertura)) +
+  geom_bar(stat = "identity") +
+  geom_hline(yintercept = nivel_confianza, color = "#CD1076", linetype = "dashed", size = 1) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(title = paste("Cobertura =", round(tasa_cobertura*100, 1), "%"),
+       subtitle = paste("Valor verdadero P(X=0) =", round(valor_verdadero, 4)),
+       y = "Proporción") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+# Mostrar gráficos
+
+hist_estimaciones + bar_cobertura
+
+```
+
+Podemos obseervar que los resultados se muestran de mejor manera y con precisión mas exacta de cuantos resultados de las simulaciones que se pueden hacer obtendran un valor real al que buscamos. 
+Gracias a las pruebas anteriores podemos concluir que los métodos Monte Carlo y Bootstrap no Paramétrico son de gran ayuda para estimar la distribución de distintos parámetros, así como tambien medidas de tendencia para muestras, sin embargo para Bootstrap es necesario tener una buena muestra pues los resultados si dependen de eso, la segunda muestra no fue muy buena, es por eso que los resultados obtenidos no coincidieron a pesar de que los dos métodos son muy buenos para estimar. 
+
+```{r ejemplito, include=FALSE}
+
+######### Ejemplito
+#Por ultimo y como pequeña muestra del ultimo proceso con la variable binaria, se muestran los resultados de los 5 primeros intervallos estimados 
+
+cat("\nEjemplo de los primeros 5 intervalos:\n")
+for (i in 1:5) {
+  cat(sprintf("Simulación %d: [%.4f, %.4f] %s\n", 
+              i, 
+              lim_inf[i], 
+              lim_sup[i],
+              ifelse(Z[i], "(Cubre)", "(No cubre)")))
+}
+
+# Distribución de Z
+cat("\nDistribución de la variable Z:\n")
+print(table(Z))
+
+# Prueba binomial para comparar con nivel de confianza
+test_cobertura <- binom.test(sum(Z), length(Z), p = nivel_confianza)
+print(test_cobertura)
+
+```
+
+
+
+
+
+
+
+
+
