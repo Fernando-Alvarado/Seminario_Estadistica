@@ -35,7 +35,7 @@ knitr::opts_chunk$set(
 )
 library(ggplot2)
 #Elegimos nuestra carpeta
-setwd("~/Escritorio/2025-2/sem_est_1/tarea_1/Seminario_Estadistica/Proyecto_1/Ejercicio_4")
+setwd("C:/Users/ferna/Documents/Seminario_Estadistica/Proyecto_1/Ejercicio_4")
 ```
 
 

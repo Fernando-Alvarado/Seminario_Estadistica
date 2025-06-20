@@ -69,7 +69,7 @@ tau_gorro <- function(x) {
 #Aplicamos la simulación Monte Carlo 
 
 # vector para almacenar los valores generados para  τ̂
-lamda <- 5 
+lamda <- 1.3
 theta <- lamda 
 valores.tau_gorro <- numeric(B)
 
